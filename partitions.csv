@@ -1,0 +1,7 @@
+# ESP32-C3 4MB Flash Partition Table
+# Bootloader at offset 0x10000 (64KB)
+nvs,spiffs,0x10000,0x50000
+app,0x60000,0x1e0000,encrypted,0
+otadata,1,0x1e0000,0x4000
+phy_init,0,0x200000,0x4000
+flash_config,0,0x204000,0x8000
