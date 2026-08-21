@@ -81,6 +81,11 @@ void loop() {
         // called anywhere. MQTT was effectively dead code before this.
         handleMQTT();
 
+        // BUG FIX: handleDiscovery() was declared in web_server.h but never
+        // defined or called, so inbound announcements were never read and the
+        // peer list was always empty - discovery only ever transmitted.
+        handleDiscovery();
+
         // Periodic presence broadcast (every 60s) so other lamps can discover us
         static unsigned long lastBroadcast = 0;
         if (millis() - lastBroadcast >= 60000UL) {

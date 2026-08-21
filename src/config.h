@@ -7,10 +7,26 @@
 #define LED_PIN       3
 #define BUTTON_PIN    4
 
-// Hostname includes the lamp ID for multi-device support on a network
-static char DEVICE_HOSTNAME[17]; // "LOHO-Squeeze-XXXX\0" = 16 chars + null
-static void initHostname() {
-    snprintf(DEVICE_HOSTNAME, sizeof(DEVICE_HOSTNAME), "LOHO-Squeeze-%04X", ESP.getEfuseMac() & 0xFFFF);
+// Hostname includes the lamp ID for multi-device support on a network.
+//
+// BUG FIX: this used to be a `static char DEVICE_HOSTNAME[17]` paired with an
+// initHostname() that *nothing ever called*, so every use site
+// (WiFi.setHostname, MDNS.begin) received an empty string. Two further
+// problems made it unfixable as written: `static` at file scope in a header
+// gives every .cpp its own private copy, so initialising it from one
+// translation unit would not have helped the others; and the buffer was one
+// byte short - "LOHO-Squeeze-" is 13 chars + 4 hex digits + NUL = 18 - so the
+// last hex digit was silently truncated.
+//
+// A function-local static has exactly one instance across the program and
+// initialises itself on first use, so it cannot be forgotten.
+inline const char* deviceHostname() {
+    static char name[18] = {0};
+    if (name[0] == '\0') {
+        snprintf(name, sizeof(name), "LOHO-Squeeze-%04X",
+                 (unsigned)(ESP.getEfuseMac() & 0xFFFF));
+    }
+    return name;
 }
 
 #define PWM_FREQ      20000 

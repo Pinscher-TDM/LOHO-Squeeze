@@ -41,7 +41,7 @@ static void serveStaticFile(const char *path, const char *contentType) {
 void setupWiFi() {
     if (settings.ssid.length() > 0) {
         WiFi.mode(WIFI_STA);
-        WiFi.setHostname(DEVICE_HOSTNAME);
+        WiFi.setHostname(deviceHostname());
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
         Serial.println("WiFi begin");
 
@@ -51,7 +51,7 @@ void setupWiFi() {
 
     if (WiFi.status() == WL_CONNECTED) {
         apMode = false;
-        MDNS.begin(DEVICE_HOSTNAME);
+        MDNS.begin(deviceHostname());
         setupMatter();
         Serial.printf("[BOOT] Connected to Wi-Fi: %s, IP: %s\n", settings.ssid.c_str(), WiFi.localIP().toString().c_str());
     } else {
@@ -75,7 +75,13 @@ static void checkBackgroundReconnect() {
         WiFi.softAPdisconnect(true);
         WiFi.mode(WIFI_STA);
         apMode = false;
-        MDNS.begin(DEVICE_HOSTNAME);
+        MDNS.begin(deviceHostname());
+        // BUG FIX: initDiscovery() bails out unless WiFi is already connected,
+        // and it only ran once during setup() - which in AP-fallback mode was
+        // before any connection existed. Recovering the link therefore left
+        // discovery permanently dead. Re-initialise it here, on the same path
+        // that restores mDNS and Matter.
+        initDiscovery();
         setupMatter();
         return;
     }
@@ -191,21 +197,40 @@ void initWebServer() {
         server.send(200, "text/plain", "Commissioning window opened - open your Home app now and scan the code below");
     });
 
-    // List all devices on the network (for multi-lamp control)
+    // List all LOHO-Squeeze devices on the network (for multi-lamp control).
+    //
+    // BUG FIX: this used createNestedObject("devices"), which emits a single
+    // JSON *object* - but index.html does `devices.length` and `devices[0]`,
+    // so `.length` was undefined, the render bailed out early, and the device
+    // list silently stayed empty. It also only ever described this device,
+    // because nothing collected peers. Now it emits a proper array of self +
+    // everything handleDiscovery() has heard from.
+    //
+    // StaticJsonDocument is deprecated in ArduinoJson 7; JsonDocument sizes
+    // itself, which also removes the 512-byte cap that would have truncated
+    // the list once a few lamps showed up.
     server.on("/api/devices", HTTP_GET, [&]() {
-        StaticJsonDocument<512> doc;
-
+        JsonDocument doc;
         uint32_t myId = getLampId();
-        String name = DEVICE_HOSTNAME;
-        String ip = WiFi.localIP().toString();
-
-        // Build device object - use nested add for multiple fields
-        JsonObject dev = doc.createNestedObject("devices");
-        dev["name"] = name;
-        dev["id"] = myId;
-        dev["ip"] = ip;
-
         doc["myId"] = myId;
+
+        JsonArray devices = doc["devices"].to<JsonArray>();
+
+        JsonObject self = devices.add<JsonObject>();
+        self["id"]   = myId;
+        self["name"] = deviceHostname();
+        self["ip"]   = WiFi.localIP().toString();
+        self["self"] = true;
+
+        for (size_t i = 0; i < getPeerCount(); i++) {
+            const LohoPeer* p = getPeer(i);
+            if (!p) continue;
+            JsonObject d = devices.add<JsonObject>();
+            d["id"]   = p->id;
+            d["name"] = p->name;
+            d["ip"]   = p->ip.toString();
+            d["self"] = false;
+        }
 
         String json;
         serializeJson(doc, json);
