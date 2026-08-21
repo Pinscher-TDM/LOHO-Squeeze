@@ -8,7 +8,10 @@
 #define BUTTON_PIN    4
 
 // Hostname includes the lamp ID for multi-device support on a network
-static const char* DEVICE_HOSTNAME = "LOHO-Squeeze-" String(ESP.getEfuseMac() & 0xFFFF).c_str();
+static char DEVICE_HOSTNAME[17]; // "LOHO-Squeeze-XXXX\0" = 16 chars + null
+static void initHostname() {
+    snprintf(DEVICE_HOSTNAME, sizeof(DEVICE_HOSTNAME), "LOHO-Squeeze-%04X", ESP.getEfuseMac() & 0xFFFF);
+}
 
 #define PWM_FREQ      20000 
 #define PWM_RES       10    

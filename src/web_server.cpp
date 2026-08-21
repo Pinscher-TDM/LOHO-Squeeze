@@ -23,6 +23,7 @@ void setupWiFi() {
         WiFi.mode(WIFI_STA);
         WiFi.setHostname(DEVICE_HOSTNAME);
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
+        Serial.println("WiFi begin");
 
         unsigned long start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) delay(500);
@@ -48,7 +49,7 @@ void setupWiFi() {
 // retries the saved credentials in the background every
 // WIFI_RETRY_INTERVAL_MS and tears the AP down the moment it connects.
 static void checkBackgroundReconnect() {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
         Serial.println("Wi-Fi connected in the background - shutting down fallback AP");
         dnsServer.stop();
         WiFi.softAPdisconnect(true);
@@ -143,8 +144,7 @@ void initWebServer() {
         server.send(200, "text/plain", "OK");
     });
 
-    // Matter status for settings.html to display (commissioned state,
-    // pairing code, QR code link).
+
     server.on("/api/matter-info", HTTP_GET, [&]() {
         String json = "{";
         json += "\"started\":" + String(isMatterStarted() ? "true" : "false") + ",";

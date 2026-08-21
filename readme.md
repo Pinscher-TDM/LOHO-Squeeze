@@ -5,7 +5,7 @@ A robust IoT light control solution built on an ESP32-C3, featuring multi-protoc
 ## Features
 
 ### Connectivity & Discovery
-- **SSDP Discovery**: Announces device presence via SSDP multicast (224.0.0.251:1900) with unique lamp ID derived from ESP32-C3 efuse MAC address.
+- **SSDP Discovery**: Announces device presence via SSDP multicast (224.0.0.251:1900) after WiFi connects and MDNS is initialized; unique lamp ID derived from ESP32-C3 efuse MAC address.
 - **Matter Protocol**: Full Matter dimmable light integration for smart home control (HomeKit, Google Home, Home Assistant).
 - **MQTT Integration**: Publishes state to MQTT topics and supports remote on/off/brightness commands; includes Home Assistant discovery payloads.
 

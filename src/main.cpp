@@ -57,16 +57,17 @@ void saveSettings() {
 
 void setup() {
     Serial.begin(115200);
+    Serial.println("LOHO-Squeeze booting...");
     loadSettings();
     initLightControl();
 
-    // Initialize discovery (hostname + UDP socket) before WiFi starts up
-    initDiscovery();
-
     if (!settings.wifiRadioOff) {
         setupWiFi();
+        // Initialize discovery (hostname + UDP socket) after WiFi is ready
+        initDiscovery();
         initWebServer();
         setupMQTT();
+        // Defer Matter until web server routes are registered to avoid CLUSTERS KeyError
     } else {
         WiFi.mode(WIFI_OFF);
     }

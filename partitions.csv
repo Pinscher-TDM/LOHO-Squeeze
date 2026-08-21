@@ -1,5 +1,4 @@
-# ESP32-C3 4MB Flash Partition Table
+# ESP32-C3 4MB Flash Partition Table (reduced app for littlefs)
 # Name,     Type, SubType,  Offset,   Size,     Flags
 nvs,        data, nvs,      0x9000,   0x5000,
-app,        app,  factory,  0x10000,  0x2C0000,
-littlefs,   data, spiffs,   0x2D0000, 0x130000,
+app,        app,  factory,  0x10000,  0x23D000,
