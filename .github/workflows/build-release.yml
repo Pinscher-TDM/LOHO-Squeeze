@@ -35,12 +35,12 @@ jobs:
       - name: Create GitHub Release
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          
           # Get the latest commit message for release notes
           COMMIT_MSG=$(git log --oneline -1)
           
-          # Create a temporary file with release notes
-          cat > "release_notes_${VERSION}.md" << EOF
-# Release $VERSION
+          # Build release notes using echo (no heredoc in YAML)
+          RELEASE_NOTES="# Release $VERSION
 
 ## Firmware Details
 - **Platform**: ESP32-C3 (Seeed Xiao ESP32C3)
@@ -49,8 +49,7 @@ jobs:
 - **Features**: Matter, WiFi, BLE, MQTT, Web Server
 
 ## Changes since last release
-$COMMIT_MSG
-EOF
+$COMMIT_MSG"
 
           # Upload the firmware binary as an asset to the release
           pio run -t upload --environment esp32c3
@@ -59,5 +58,5 @@ EOF
           curl -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
-            --data "{\"tag_name\": \"$VERSION\", \"name\": \"$VERSION\", \"body\": \"$(cat release_notes_${VERSION}.md)\", \"draft\": false, \"prerelease\": false}" \
+            --data "{\"tag_name\": \"$VERSION\", \"name\": \"$VERSION\", \"body\": \"$RELEASE_NOTES\", \"draft\": false, \"prerelease\": false}" \
             https://api.github.com/repos/${{ github.repository }}/releases
