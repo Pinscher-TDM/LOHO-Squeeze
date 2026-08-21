@@ -1,0 +1,63 @@
+name: Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        required: true
+        default: 'Release-1.0'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PlatformIO
+        uses: platformio/platformio-action@main
+        with:
+          command: 'upgrade'
+          ci: true
+
+      - name: Build project for ESP32-C3
+        run: pio run --environment esp32c3
+        env:
+          PLATFORMIO_BUILD_FLAGS: -DDEBUG=1
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: loho-squeeze-firmware-${{ github.event.inputs.version }}
+          path: .pio/build/esp32c3/firmware.bin
+
+      - name: Create GitHub Release
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          # Get the latest commit message for release notes
+          COMMIT_MSG=$(git log --oneline -1)
+          
+          # Create a temporary file with release notes
+          cat > "release_notes_${VERSION}.md" << EOF
+# Release $VERSION
+
+## Firmware Details
+- **Platform**: ESP32-C3 (Seeed Xiao ESP32C3)
+- **Framework**: Arduino
+- **Partition Scheme**: Custom (see partitions.csv)
+- **Features**: Matter, WiFi, BLE, MQTT, Web Server
+
+## Changes since last release
+$COMMIT_MSG
+EOF
+
+          # Upload the firmware binary as an asset to the release
+          pio run -t upload --environment esp32c3
+          
+          # Use curl to create the release (requires GITHUB_TOKEN)
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            --data "{\"tag_name\": \"$VERSION\", \"name\": \"$VERSION\", \"body\": \"$(cat release_notes_${VERSION}.md)\", \"draft\": false, \"prerelease\": false}" \
+            https://api.github.com/repos/${{ github.repository }}/releases
