@@ -19,7 +19,7 @@ void broadcastPresence(const char* ssid, uint32_t lampId) {
     request[n] = '\0';
 
     // Send to SSDP multicast address (works on WiFi)
-    udp.beginMulticast(239.255.255.250, 1900);
+    udp.beginMulticast(IPAddress(239, 255, 255, 250), 1900);
     udp.beginPacket(IPAddress(224, 0, 0, 251), 1900);
     udp.print(request);
     udp.endPacket();
@@ -28,4 +28,6 @@ void broadcastPresence(const char* ssid, uint32_t lampId) {
     udp.beginPacket(WiFi.localIP(), 1900);
     udp.print("ESPLamp-" + String(lampId, HEX) + "\n");
     udp.endPacket();
+
+    Serial.printf("[DISCOVERY] Connected - SSID: %s, IP: %s\n", ssid, WiFi.localIP().toString().c_str());
 }

@@ -2,11 +2,13 @@
 #define CONFIG_H
 
 #include <Arduino.h>
+#include <Preferences.h>
 
 #define LED_PIN       3
 #define BUTTON_PIN    4
 
-#define DEVICE_HOSTNAME "Squeeze"
+// Hostname includes the lamp ID for multi-device support on a network
+static const char* DEVICE_HOSTNAME = "LOHO-Squeeze-" String(ESP.getEfuseMac() & 0xFFFF).c_str();
 
 #define PWM_FREQ      20000 
 #define PWM_RES       10    

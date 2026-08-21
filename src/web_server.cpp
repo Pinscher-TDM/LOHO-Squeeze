@@ -3,11 +3,14 @@
 #include "light_control.h"
 #include "mqtt_handler.h"
 #include "matter_handler.h"
+#include "discovery.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
+#include <ArduinoJson.h>
+#include <Preferences.h>
 
 static WebServer server(80);
 static DNSServer dnsServer;
@@ -29,11 +32,13 @@ void setupWiFi() {
         apMode = false;
         MDNS.begin(DEVICE_HOSTNAME);
         setupMatter();
+        Serial.printf("[BOOT] Connected to Wi-Fi: %s, IP: %s\n", settings.ssid.c_str(), WiFi.localIP().toString().c_str());
     } else {
         WiFi.mode(WIFI_AP);
         WiFi.softAP("LOHO-Squeeze");
         apMode = true;
         dnsServer.start(53, "*", WiFi.softAPIP());
+        Serial.printf("[BOOT] AP mode - IP: %s\n", WiFi.softAPIP().toString().c_str());
     }
 }
 
@@ -159,6 +164,27 @@ void initWebServer() {
         server.send(200, "text/plain", "Commissioning window opened - open your Home app now and scan the code below");
     });
 
+    // List all devices on the network (for multi-lamp control)
+    server.on("/api/devices", HTTP_GET, [&]() {
+        StaticJsonDocument<512> doc;
+
+        uint32_t myId = getLampId();
+        String name = DEVICE_HOSTNAME;
+        String ip = WiFi.localIP().toString();
+
+        // Build device object - use nested add for multiple fields
+        JsonObject dev = doc.createNestedObject("devices");
+        dev["name"] = name;
+        dev["id"] = myId;
+        dev["ip"] = ip;
+
+        doc["myId"] = myId;
+
+        String json;
+        serializeJson(doc, json);
+        server.send(200, "application/json", json);
+    });
+
     server.on("/save", HTTP_POST, [&]() {
         if (server.hasArg("ssid")) settings.ssid = server.arg("ssid");
         // BUG FIX: only overwrite the password if a new one was actually
@@ -196,6 +222,7 @@ void initWebServer() {
     });
 
     server.begin();
+    Serial.println("[WEB] Server started");
     serverStarted = true;
 }
 

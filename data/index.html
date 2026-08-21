@@ -2,28 +2,64 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LED Control</title>
+    <title>LOHO-Squeeze - Multi-Device Control</title>
     <link rel="stylesheet" type="text/css" href="/style.css">
 </head>
 <body>
+    <section id="device-list">
+        <h2>All Devices on Network</h2>
+        <ul id="devices-container"></ul>
+    </section>
+
     <div class="card">
-        <h1>LED Control</h1>
-        <button class="btn" onclick="fetch('/api/control?toggle=1').then(syncState)">Toggle On / Off</button>
-        <input type="range" id="dimmer" onchange="fetch('/api/control?pwm=' + this.value)">
-        <div class="status" id="status">Loading...</div>
-        <br><br>
-        <a href="/settings">SETTINGS</a>
-    </div>
+        <h1>LOHO-Squeeze - Device Control</h1>
     <script>
+        // Fetch all devices on the network
+        async function loadDevices() {
+            try {
+                const res = await fetch('/api/devices');
+                if (!res.ok) throw new Error('Failed to load devices');
+                const data = await res.json();
+                renderDeviceList(data.devices);
+            } catch (e) {
+                console.error(e);
+                document.getElementById('devices-container').innerHTML = 
+                    '<li style="color:#900">Could not load devices. Make sure this device is connected to Wi‑Fi.</li>';
+            }
+        }
+
+        function renderDeviceList(devices) {
+            const container = document.getElementById('devices-container');
+            if (!container || !devices.length) return;
+            
+            let html = '<li style="margin:8px 0; padding:12px; border-radius:6px; background:#f5f5f5; border:2px solid #4CAF50">';
+            html += '<strong>' + devices[0].name + '</strong> (' + devices[0].ip + ') - <em>(your device)</em><br>';
+            html += 'Status: ';  
+            fetch('/api/state').then(r => r.json()).then(data => {
+                const status = data.ledOn ? '<span style="color:#4CAF50">ON</span>' : '<span style="color:#999">OFF</span>';
+                html += status + ' (PWM: ' + data.pwm + ')';
+            }).catch(() => { html += 'loading...'; });
+            html += '</li>';
+            container.innerHTML = html;
+        }
+
         function syncState() {
             fetch('/api/state').then(r => r.json()).then(data => {
                 document.getElementById('dimmer').min = data.minB;
                 document.getElementById('dimmer').max = data.maxB;
                 document.getElementById('dimmer').value = data.pwm;
-                document.getElementById('status').innerText = 'Light is currently ' + (data.ledOn ? 'ON' : 'OFF');
+                const statusEl = document.querySelector('#device-list li:last-child');
+                if (statusEl) {
+                    statusEl.innerHTML = 'Status: ';  
+                    fetch('/api/state').then(r => r.json()).then(d => {
+                        const status = d.ledOn ? '<span style="color:#4CAF50">ON</span>' : '<span style="color:#999">OFF</span>';
+                        statusEl.innerHTML += status + ' (PWM: ' + d.pwm + ')';
+                    }).catch(() => { statusEl.innerHTML += 'loading...'; });
+                }
             });
         }
-        syncState();
+
+        loadDevices();
     </script>
 </body>
 </html>

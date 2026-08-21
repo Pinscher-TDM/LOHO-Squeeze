@@ -2,12 +2,13 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Settings</title>
+    <title>Settings - LOHO-Squeeze</title>
     <link rel="stylesheet" type="text/css" href="/style.css">
 </head>
 <body>
     <div class="card">
         <h1>Settings</h1>
+        <p><small>ID: <span id="deviceId"></span></small></p>
         <form action="/save" method="POST">
             <h2>Wi-Fi</h2>
             <label>SSID</label><input type="text" name="ssid" id="ssid">
@@ -41,6 +42,11 @@
         <a href="/">BACK</a>
     </div>
     <script>
+        // Load device ID from the /api/devices endpoint (shows which lamp you're configuring)
+        fetch('/api/devices').then(r => r.json()).then(data => {
+            if (data.myId) document.getElementById('deviceId').textContent = data.myId;
+        }).catch(() => {});
+
         fetch('/api/settings').then(r => r.json()).then(data => {
             document.getElementById('ssid').value = data.ssid;
             document.getElementById('matterEnabled').checked = data.matterEnabled;

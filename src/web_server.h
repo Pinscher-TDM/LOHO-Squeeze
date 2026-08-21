@@ -2,6 +2,8 @@
 #define WEB_SERVER_H
 
 void setupWiFi();
+void initDiscovery();
+void handleDiscovery();
 void initWebServer();
 void handleWebServer();
 
