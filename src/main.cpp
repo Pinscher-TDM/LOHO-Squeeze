@@ -7,6 +7,7 @@
 #include "mqtt_handler.h"
 #include "web_server.h"
 #include "discovery.h"
+#include "matter_handler.h"
 
 AppSettings settings;
 static Preferences prefs;
@@ -67,7 +68,11 @@ void setup() {
         initDiscovery();
         initWebServer();
         setupMQTT();
-        // Defer Matter until web server routes are registered to avoid CLUSTERS KeyError
+        // Defer Matter until web server routes are registered to avoid CLUSTERS
+        // KeyError. This comment described the intent, but setupMatter() was
+        // actually being called from inside setupWiFi() above - i.e. before the
+        // web server existed. Now it genuinely runs last.
+        setupMatter();
     } else {
         WiFi.mode(WIFI_OFF);
     }

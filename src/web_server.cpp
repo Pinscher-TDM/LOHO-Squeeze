@@ -52,7 +52,12 @@ void setupWiFi() {
     if (WiFi.status() == WL_CONNECTED) {
         apMode = false;
         MDNS.begin(deviceHostname());
-        setupMatter();
+        // BUG FIX: setupMatter() used to run here, inside setupWiFi(), which
+        // main.cpp calls *before* initWebServer(). That directly contradicted
+        // main.cpp's own comment ("Defer Matter until web server routes are
+        // registered") and meant the Matter stack was already running and
+        // competing for the network stack while the HTTP server was still
+        // being set up. main.cpp now starts Matter after the server is up.
         Serial.printf("[BOOT] Connected to Wi-Fi: %s, IP: %s\n", settings.ssid.c_str(), WiFi.localIP().toString().c_str());
     } else {
         WiFi.mode(WIFI_AP);

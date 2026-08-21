@@ -20,8 +20,22 @@
 // Send and receive now both use the SSDP group/port, and every packet carries
 // a "loho" marker so unrelated SSDP traffic on port 1900 is ignored cheaply.
 
-static const IPAddress DISCOVERY_GROUP(239, 255, 255, 250);
-static const uint16_t  DISCOVERY_PORT = 1900;
+// PORT CHOICE: an earlier version of this used the SSDP group/port
+// (239.255.255.250:1900). That is a busy address on any real network - routers,
+// smart TVs, DLNA servers and every phone doing an M-SEARCH broadcast to it
+// constantly. Binding there meant handleDiscovery() woke up for every one of
+// those packets and ran a JSON parse against each, purely to reject it. In AP
+// mode there is no such traffic, which is exactly why the device behaved in AP
+// mode and struggled once it joined a real LAN.
+//
+// This is our own protocol with no third-party interop requirement, so it gets
+// its own administratively-scoped group and port instead.
+static const IPAddress DISCOVERY_GROUP(239, 255, 77, 77);
+static const uint16_t  DISCOVERY_PORT = 50077;
+
+// Hard cap on packets drained per loop() pass. Without this a burst of traffic
+// could hold the loop long enough for WebServer client reads to time out.
+static const int MAX_PACKETS_PER_PASS = 4;
 
 static WiFiUDP  udp;
 static bool     udpReady = false;
@@ -103,7 +117,8 @@ void handleDiscovery() {
     if (!udpReady || WiFi.status() != WL_CONNECTED) return;
 
     int len;
-    while ((len = udp.parsePacket()) > 0) {
+    int processed = 0;
+    while (processed++ < MAX_PACKETS_PER_PASS && (len = udp.parsePacket()) > 0) {
         char buf[192];
         if (len >= (int)sizeof(buf)) {   // not one of ours - discard whole packet
             udp.flush();
@@ -113,8 +128,11 @@ void handleDiscovery() {
         if (n <= 0) continue;
         buf[n] = '\0';
 
-        // Port 1900 carries real SSDP from routers, TVs, etc. Anything that
-        // is not our JSON announce fails one of these guards and is dropped.
+        // Cheap reject before paying for a JSON parse: our announce always
+        // starts with '{'. On a dedicated port stray traffic should be rare,
+        // but the group is still reachable by anything on the LAN.
+        if (buf[0] != '{') continue;
+
         JsonDocument doc;
         if (deserializeJson(doc, buf)) continue;
         if (doc["loho"].isNull()) continue;
