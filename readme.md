@@ -76,19 +76,33 @@ explicitly tolerates EAGAIN), so the HTTP connection is torn down mid-request.
 This does not appear in AP mode, because Matter only starts once
 `WiFi.status() == WL_CONNECTED`.
 
-Mitigations, in order of preference:
+Fix: **this project does not use BLE at all.** `setupMatter()` only runs once
+`WiFi.status() == WL_CONNECTED`, so the device always already has IP
+connectivity and can be commissioned *on-network*. After `Matter.begin()`,
+`matter_handler.cpp` closes the BLE-advertising window that the stack opens by
+default and reopens it with `CommissioningWindowAdvertisement::kDnssdOnly` -
+mDNS discovery, no BLE advertising. This is the same approach the Matter
+library itself uses after the last fabric is removed (see the `kFabricRemoved`
+handler in the library's `Matter.cpp`).
 
-1. `WiFi.setSleep(false)` is already applied in `setupWiFi()` - Arduino defaults
-   Wi-Fi to modem sleep, which compounds the airtime loss.
-2. **Commission the device.** Once commissioned, the Matter stack deinitialises
-   BLE ("BLE deinitialized and memory reclaimed" on the serial log) and the
-   contention largely goes away. The uncommissioned state is the worst case.
-3. Turn Matter off in Settings while doing web-based configuration, and switch
-   it back on afterwards.
+Confirm it on the serial log at boot:
 
-The Arduino Matter API exposes no way to close the commissioning window or stop
-BLE advertising on demand - only `decommission()` - so options 2 and 3 are the
-levers available from application code.
+```
+Matter: commissioning over the network (DNS-SD), BLE off.
+```
+
+Commission by entering the manual pairing code (or scanning the QR) from the
+Settings page. Apple Home, Google Home and Home Assistant all support
+on-network commissioning for a device already on the LAN.
+
+`WiFi.setSleep(false)` is also applied in `setupWiFi()` - Arduino defaults Wi-Fi
+to modem sleep, which compounds any remaining airtime loss.
+
+Note that the Arduino Matter API itself exposes no way to close the
+commissioning window (only `begin()`, `decommission()` and queries), which is
+why `matter_handler.cpp` reaches through to the underlying CHIP
+`CommissioningWindowManager` directly - under the CHIP stack lock, since that
+API is not thread-safe.
 
 ### Flash layout
 
