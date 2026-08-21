@@ -17,6 +17,26 @@ static DNSServer dnsServer;
 static bool apMode = false;
 static bool serverStarted = false;      // BUG FIX: guards against double-registering routes
 static unsigned long lastWifiRetry = 0;
+static bool fsReady = false;            // LittleFS mounted successfully?
+
+// Serves a file out of LittleFS, reporting *why* it is missing rather than
+// handing the browser a blank 200. Both failure modes are recoverable by the
+// user, so say exactly what to do about them.
+static void serveStaticFile(const char *path, const char *contentType) {
+    if (!fsReady) {
+        server.send(503, "text/plain",
+                    "Filesystem not mounted. Flash it with: pio run -t uploadfs");
+        return;
+    }
+    File f = LittleFS.open(path, "r");
+    if (!f || f.isDirectory()) {
+        server.send(404, "text/plain",
+                    "File missing from LittleFS. Flash it with: pio run -t uploadfs");
+        return;
+    }
+    server.streamFile(f, contentType);
+    f.close();
+}
 
 void setupWiFi() {
     if (settings.ssid.length() > 0) {
@@ -76,21 +96,28 @@ void initWebServer() {
     // route a second time and call server.begin() twice.
     if (serverStarted) return;
 
-    if (!LittleFS.begin(true)) {
-        Serial.println("LittleFS Mount Failed");
-        return;
+    // BUG FIX: a LittleFS mount failure used to `return` here, which skipped
+    // every server.on() registration AND server.begin() - so the whole web UI
+    // silently vanished (no dashboard, no settings page, no way to fix the
+    // Wi-Fi credentials) instead of just the file-backed pages. Now we record
+    // the failure and start the server anyway: the JSON API is NVS-backed and
+    // keeps working, and the static routes report the real problem.
+    fsReady = LittleFS.begin(true);
+    if (!fsReady) {
+        Serial.println("[WEB] LittleFS mount failed - static pages unavailable.");
+        Serial.println("[WEB] Upload the filesystem image with: pio run -t uploadfs");
     }
 
     server.on("/", HTTP_GET, [&]() {
-        server.send(200, "text/html", LittleFS.open("/index.html", "r").readString());
+        serveStaticFile("/index.html", "text/html");
     });
 
     server.on("/settings", HTTP_GET, [&]() {
-        server.send(200, "text/html", LittleFS.open("/settings.html", "r").readString());
+        serveStaticFile("/settings.html", "text/html");
     });
 
     server.on("/style.css", HTTP_GET, [&]() {
-        server.send(200, "text/css", LittleFS.open("/style.css", "r").readString());
+        serveStaticFile("/style.css", "text/css");
     });
 
     server.on("/api/state", HTTP_GET, [&]() {

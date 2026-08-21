@@ -31,6 +31,51 @@ This project uses PlatformIO for build and deployment.
 3. Configure your environment in `platformio.ini` (see below).
 4. Build and upload using the PlatformIO sidebar: **Build** → **Upload**.
 
+### Flashing
+
+The firmware alone is not enough - the web interface is served from a LittleFS
+image built out of `data/`, and that image is **not** written by a normal
+Upload. A complete flash is two steps:
+
+```bash
+pio run -t upload      # firmware
+pio run -t uploadfs    # data/ -> LittleFS partition
+```
+
+Skip `uploadfs` and the device boots fine but every page returns
+"Filesystem not mounted".
+
+If you change `partitions.csv`, erase the chip first. NVS lives at a fixed
+offset, so a re-layout leaves stale settings (Wi-Fi credentials, Matter
+commissioning) that decode as garbage:
+
+```bash
+pio run -t erase
+```
+
+### Flash layout
+
+4MB flash, factory-only (there is no OTA code in this firmware, so the
+`otadata`/`ota_0`/`ota_1` trio would only waste space):
+
+| Partition | Offset | Size |
+| --- | --- | --- |
+| bootloader | `0x0` | 32 KB |
+| partition table | `0x8000` | 4 KB |
+| `nvs` | `0x9000` | 20 KB |
+| `app` (factory) | `0x10000` | 3456 KB |
+| `spiffs` (LittleFS) | `0x370000` | 576 KB |
+
+Matter + Wi-Fi + BLE + mDNS + WebServer is a large binary, so most of the flash
+goes to the app. If a build ever fails to boot with `Image length ... doesn't
+fit in partition length` / `No bootable app partition`, the app outgrew its
+partition - that message comes from the bootloader, not from the upload.
+
+The `spiffs` partition keeps that name and SubType deliberately even though it
+is formatted as LittleFS: both `LittleFS.begin()` and `uploadfs` locate the
+partition by subtype, and naming it `littlefs` trips a warning in
+`gen_esp32part.py`.
+
 ## Configuration (`platformio.ini`)
 
 The project is configured for the `esp32c3` environment with required libraries defined in the `.pio` configuration file.
