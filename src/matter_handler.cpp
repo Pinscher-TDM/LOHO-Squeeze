@@ -80,9 +80,18 @@ String getMatterQRCodeUrl() {
 
 void openMatterCommissioningWindow() {
     if (!matterStarted) return;
-    // Method name may differ across core versions - if this doesn't
-    // compile, check your installed core's Matter example for the
-    // current name (some versions expose this directly on Matter,
-    // others via a session/fabric manager helper).
-    Matter.openCommissioningWindow();
+    
+    // Check if the device is already commissioned
+    if (Matter.isDeviceCommissioned()) {
+        Serial.println("Matter Node is commissioned and connected to the network. Ready for use.");
+        return;
+    }
+    
+    // If not commissioned, show pairing information
+    Serial.println("");
+    Serial.println("Matter Node is not commissioned yet.");
+    Serial.println("Initiate the device discovery in your Matter environment.");
+    Serial.println("Commission it to your Matter hub with the manual pairing code or QR code");
+    Serial.printf("Manual pairing code: %s\r\n", Matter.getManualPairingCode().c_str());
+    Serial.printf("QR code URL: %s\r\n", Matter.getOnboardingQRCodeUrl().c_str());
 }
