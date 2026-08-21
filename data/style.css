@@ -1,0 +1,90 @@
+:root {
+  --bg: #f4f0e8;
+  --surface: #ffffff;
+  --ink: #2b241d;
+  --muted: #8c8172;
+  --accent: #a9754f;
+  --line: #ddd3c2;
+}
+
+body {
+  font-family: sans-serif;
+  padding: 32px 20px;
+  background: var(--bg);
+  color: var(--ink);
+  text-align: center;
+}
+
+.card {
+  background: var(--surface);
+  max-width: 420px;
+  margin: auto;
+  padding: 40px 32px;
+  border: 1px solid var(--line);
+}
+
+h1 {
+  margin-bottom: 24px;
+}
+
+h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-align: left;
+  margin-top: 24px;
+}
+
+label {
+  font-size: 11px;
+  display: block;
+  text-align: left;
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  margin-top: 16px;
+}
+
+.btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 14px;
+  font-size: 12px;
+  width: 100%;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.btn-sec {
+  background: transparent;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  margin-top: 8px;
+}
+
+.status {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+}

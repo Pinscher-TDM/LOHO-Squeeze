@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LED Control</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+</head>
+<body>
+    <div class="card">
+        <h1>LED Control</h1>
+        <button class="btn" onclick="fetch('/api/control?toggle=1').then(syncState)">Toggle On / Off</button>
+        <input type="range" id="dimmer" onchange="fetch('/api/control?pwm=' + this.value)">
+        <div class="status" id="status">Loading...</div>
+        <br><br>
+        <a href="/settings">SETTINGS</a>
+    </div>
+    <script>
+        function syncState() {
+            fetch('/api/state').then(r => r.json()).then(data => {
+                document.getElementById('dimmer').min = data.minB;
+                document.getElementById('dimmer').max = data.maxB;
+                document.getElementById('dimmer').value = data.pwm;
+                document.getElementById('status').innerText = 'Light is currently ' + (data.ledOn ? 'ON' : 'OFF');
+            });
+        }
+        syncState();
+    </script>
+</body>
+</html>

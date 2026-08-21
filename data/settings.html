@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+</head>
+<body>
+    <div class="card">
+        <h1>Settings</h1>
+        <form action="/save" method="POST">
+            <h2>Wi-Fi</h2>
+            <label>SSID</label><input type="text" name="ssid" id="ssid">
+            <label>Password</label><input type="password" name="password" placeholder="Leave blank to keep current password">
+
+            <h2>Matter</h2>
+            <label><input type="checkbox" name="matterEnabled" id="matterEnabled"> Enable Matter</label>
+            <div class="status" id="matterStatus">Checking...</div>
+            <div class="status" id="matterCode"></div>
+            <div class="link-row" id="matterQrLink"></div>
+            <button type="button" class="btn btn-sec" onclick="pairMatter()">Open Commissioning Window</button>
+            <div class="status">One pairing code/QR works for Apple Home, Google Home, Home Assistant, or any other Matter app - open that app's "Add Device" flow and scan/enter it there. Matter supports being added to multiple ecosystems at once, but each one has to commission it separately.</div>
+
+            <h2>Home Assistant (MQTT)</h2>
+            <label><input type="checkbox" name="mqttEnabled" id="mqttEnabled"> Enable MQTT</label>
+            <label>Broker</label><input type="text" name="mqttServer" id="mqttServer">
+            <label>Port</label><input type="number" name="mqttPort" id="mqttPort">
+            <label>User</label><input type="text" name="mqttUser" id="mqttUser">
+            <label>Pass</label><input type="password" name="mqttPass" placeholder="Leave blank to keep current password">
+            <label>Topic</label><input type="text" name="mqttTopic" id="mqttTopic">
+            <button type="button" class="btn btn-sec" onclick="haDiscover()">Auto-Add to Home Assistant</button>
+
+            <h2>Dimming Limits</h2>
+            <label>Min</label><input type="number" name="minB" id="minB">
+            <label>Max</label><input type="number" name="maxB" id="maxB">
+            <label>Speed Delay (ms)</label><input type="number" name="speed" id="speed">
+
+            <input type="submit" class="btn" value="Save & Reboot" style="margin-top: 24px;">
+        </form>
+        <br>
+        <a href="/">BACK</a>
+    </div>
+    <script>
+        fetch('/api/settings').then(r => r.json()).then(data => {
+            document.getElementById('ssid').value = data.ssid;
+            document.getElementById('matterEnabled').checked = data.matterEnabled;
+            document.getElementById('mqttEnabled').checked = data.mqttEnabled;
+            document.getElementById('mqttServer').value = data.mqttServer;
+            document.getElementById('mqttPort').value = data.mqttPort;
+            document.getElementById('mqttUser').value = data.mqttUser;
+            document.getElementById('mqttTopic').value = data.mqttTopic;
+            document.getElementById('minB').value = data.minB;
+            document.getElementById('maxB').value = data.maxB;
+            document.getElementById('speed').value = data.speed;
+        });
+
+        fetch('/api/matter-info').then(r => r.json()).then(data => {
+            const statusEl = document.getElementById('matterStatus');
+            const codeEl = document.getElementById('matterCode');
+            const qrEl = document.getElementById('matterQrLink');
+            if (!data.started) {
+                statusEl.textContent = 'Matter not active (enable it above, save & reboot while connected to Wi-Fi)';
+                return;
+            }
+            statusEl.textContent = data.commissioned ? 'Added to at least one smart home app' : 'Not added to any smart home app yet';
+            if (data.pairingCode) codeEl.textContent = 'Pairing code: ' + data.pairingCode;
+            if (data.qrUrl) qrEl.innerHTML = '<a href="' + data.qrUrl + '" target="_blank">Open QR Code</a>';
+        }).catch(() => {
+            document.getElementById('matterStatus').textContent = 'Could not load Matter status';
+        });
+
+        function haDiscover() {
+            fetch('/api/ha-discover').then(r => {
+                if (r.ok) {
+                    alert('Auto-discovery published to Home Assistant.');
+                } else {
+                    r.text().then(t => alert('Failed: ' + t));
+                }
+            });
+        }
+
+        function pairMatter() {
+            fetch('/api/matter-pair').then(r => r.text()).then(t => alert(t));
+        }
+    </script>
+</body>
+</html>
