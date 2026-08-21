@@ -53,6 +53,43 @@ commissioning) that decode as garbage:
 pio run -t erase
 ```
 
+### Troubleshooting: web UI unreachable when Matter is enabled
+
+Symptom: the device joins Wi-Fi and gets an IP, but the web page will not load,
+and the serial monitor repeats:
+
+```
+fail on fd <N>, errno: 11, "No more processes"
+```
+
+`errno 11` is `EAGAIN`. The "No more processes" text is newlib's legacy string
+for that code - it has nothing to do with processes or with running out of any
+resource, and it is a red herring.
+
+Cause: the ESP32-C3 has a **single radio** shared between Wi-Fi and BLE. While
+Matter is uncommissioned it advertises over BLE continuously, and coexistence
+arbitration hands a large share of airtime to BLE. Wi-Fi reads then miss their
+deadline and return EAGAIN - and `NetworkClient::available()` in the Arduino
+core calls `stop()` on that without retrying (unlike `write()`, which
+explicitly tolerates EAGAIN), so the HTTP connection is torn down mid-request.
+
+This does not appear in AP mode, because Matter only starts once
+`WiFi.status() == WL_CONNECTED`.
+
+Mitigations, in order of preference:
+
+1. `WiFi.setSleep(false)` is already applied in `setupWiFi()` - Arduino defaults
+   Wi-Fi to modem sleep, which compounds the airtime loss.
+2. **Commission the device.** Once commissioned, the Matter stack deinitialises
+   BLE ("BLE deinitialized and memory reclaimed" on the serial log) and the
+   contention largely goes away. The uncommissioned state is the worst case.
+3. Turn Matter off in Settings while doing web-based configuration, and switch
+   it back on afterwards.
+
+The Arduino Matter API exposes no way to close the commissioning window or stop
+BLE advertising on demand - only `decommission()` - so options 2 and 3 are the
+levers available from application code.
+
 ### Flash layout
 
 4MB flash, factory-only (there is no OTA code in this firmware, so the

@@ -41,6 +41,17 @@ static void serveStaticFile(const char *path, const char *contentType) {
 void setupWiFi() {
     if (settings.ssid.length() > 0) {
         WiFi.mode(WIFI_STA);
+        // The ESP32-C3 has a SINGLE radio shared by Wi-Fi and BLE. Matter
+        // advertises over BLE continuously while the device is uncommissioned,
+        // and coexistence arbitration hands a large share of airtime to BLE.
+        // Arduino additionally defaults Wi-Fi to modem sleep (WIFI_PS_MIN_MODEM),
+        // which compounds the loss: the station misses beacons, TCP reads blow
+        // their deadline, and NetworkClient::available() tears the HTTP
+        // connection down on EAGAIN without retrying (unlike write(), which
+        // explicitly tolerates it). Keeping the receiver always-on is the
+        // standard mitigation. This is a mains-powered lamp, so the extra
+        // current draw does not matter.
+        WiFi.setSleep(false);
         WiFi.setHostname(deviceHostname());
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
         Serial.println("WiFi begin");
@@ -98,6 +109,7 @@ static void checkBackgroundReconnect() {
     lastWifiRetry = now;
 
     WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);   // see setupWiFi(): Wi-Fi/BLE coexistence
     WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
 }
 
