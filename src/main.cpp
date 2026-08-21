@@ -6,6 +6,7 @@
 
 #include "mqtt_handler.h"
 #include "web_server.h"
+#include "discovery.h"
 
 AppSettings settings;
 static Preferences prefs;
@@ -59,6 +60,9 @@ void setup() {
     loadSettings();
     initLightControl();
 
+    // Initialize discovery (hostname + UDP socket) before WiFi starts up
+    initDiscovery();
+
     if (!settings.wifiRadioOff) {
         setupWiFi();
         initWebServer();
@@ -75,6 +79,13 @@ void loop() {
         // which actually connects and processes messages - was never
         // called anywhere. MQTT was effectively dead code before this.
         handleMQTT();
+
+        // Periodic presence broadcast (every 60s) so other lamps can discover us
+        static unsigned long lastBroadcast = 0;
+        if (millis() - lastBroadcast >= 60000UL) {
+            lastBroadcast = millis();
+            broadcastPresence(settings.ssid.c_str(), getLampId());
+        }
     }
     handleButton();
 }
