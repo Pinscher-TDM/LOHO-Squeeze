@@ -1,6 +1,7 @@
 #include "mqtt_handler.h"
 #include "config.h"
 #include "light_control.h"
+#include "web_server.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -72,6 +73,33 @@ void publishMQTTState() {
     if (!settings.mqttEnabled || !mqttClient.connected()) return;
     mqttClient.publish((settings.mqttTopicBase + "/state").c_str(), ledOn ? "ON" : "OFF", true);
     mqttClient.publish((settings.mqttTopicBase + "/brightness/state").c_str(), String(currentPWM).c_str(), true);
+}
+
+// MQTT Broker Client stack lifecycle - MQTT without the web server. Matter
+// stays off because setupMatter() no-ops when settings.matterEnabled is false.
+static bool mqttStackActive = false;
+
+void initMQTTBrokerClient() {
+    if (mqttStackActive) return;
+    setupWiFi();  // this stack still needs the Wi-Fi link
+    setupMQTT();
+    mqttStackActive = true;
+}
+
+void shutdownMQTTBrokerClient() {
+    if (!mqttStackActive) return;
+    Serial.println("[MQTT] Shutting down MQTT broker client stack...");
+    mqttClient.disconnect();
+    mqttStackActive = false;
+}
+
+bool isMQTTBrokerClientActive() {
+    return mqttStackActive;
+}
+
+void handleMQTTBrokerClient() {
+    if (!mqttStackActive) return;
+    handleMQTT();
 }
 
 void publishHADiscovery() {

@@ -1,33 +1,23 @@
 #include "connection_stack_manager.h"
-#include <Arduino.h>
+#include "config.h"
+#include "web_server.h"
+#include "mqtt_handler.h"
+#include "knx_handler.h"
 
-// Connection stack manager implementation - uses static variables for memory efficiency
+ConnectionState ConnectionStackManager::connectionState = ConnectionState::NONE;
+
 ConnectionState ConnectionStackManager::getConnectionState() {
     return connectionState;
 }
 
 void ConnectionStackManager::setConnectionState(ConnectionState state) {
-    // Only allow transitions to a different active state (not back to NONE)
+    // Only allow transitions from NONE to an active state - switching
+    // between active stacks requires a reboot.
     if (state != ConnectionState::NONE && connectionState == ConnectionState::NONE) {
-        // Transitioning from NONE - safe to switch
         connectionState = state;
     } else if (connectionState != ConnectionState::NONE) {
-        // Already active - reject transition
         Serial.printf("[STACK] Connection already established as %s, rejecting switch\n",
                       getConnectionStateString(connectionState));
-    }
-}
-
-ConnectionStackManager::StackType ConnectionStackManager::getActiveStackType() {
-    switch (connectionState) {
-        case ConnectionState::WEB_SERVER:
-            return StackType::WEB_SERVER_STACK;
-        case ConnectionState::KNX:
-            return StackType::KNX_STACK;
-        case ConnectionState::MQTT_ONLY:
-            return StackType::MQTT_BROKER_STACK;
-        default:
-            return StackType::NONE;
     }
 }
 
@@ -45,5 +35,26 @@ const char* ConnectionStackManager::getConnectionStateString(ConnectionState sta
             return "MQTT Broker Client Only";
         default:
             return "None";
+    }
+}
+
+void ConnectionStackManager::startConfiguredStack() {
+    if (isAnyStackActive() || settings.wifiRadioOff) return;
+
+    ConnectionState state = ConnectionState::NONE;
+    if (settings.matterEnabled && !settings.mqttEnabled) {
+        state = ConnectionState::WEB_SERVER;
+    } else if (settings.mqttEnabled && !settings.matterEnabled) {
+        state = ConnectionState::MQTT_ONLY;
+    }
+    if (state == ConnectionState::NONE) return;
+
+    setConnectionState(state);
+    Serial.printf("[STACK] Starting %s stack...\n", getConnectionStateString(state));
+
+    if (state == ConnectionState::WEB_SERVER) {
+        initWebServer();
+    } else {
+        initMQTTBrokerClient();
     }
 }

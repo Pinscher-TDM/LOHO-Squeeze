@@ -1,10 +1,14 @@
 #ifndef MQTT_HANDLER_H
 #define MQTT_HANDLER_H
 
-#include "connection_stack_manager.h"
+void setupMQTT();
+void reconnectMQTT();
+void handleMQTT();
+void publishMQTTState();
+void publishHADiscovery();
 
-// MQTT Broker Client Stack functions - memory-efficient, no HA discovery publishing
-void initMQTTBrokerClient(const MQTTConfig& config);
+// MQTT Broker Client Stack functions - runs MQTT without web server/Matter
+void initMQTTBrokerClient();
 void shutdownMQTTBrokerClient();
 bool isMQTTBrokerClientActive();
 void handleMQTTBrokerClient();

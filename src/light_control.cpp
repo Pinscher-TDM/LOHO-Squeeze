@@ -1,6 +1,7 @@
 #include "light_control.h"
 #include "config.h"
 
+#include "connection_stack_manager.h"
 #include "web_server.h"
 #include "mqtt_handler.h"
 #include "matter_handler.h"
@@ -82,13 +83,9 @@ void toggleWiFiRadio() {
         blinkConfirm(2, 150);
         settings.wifiRadioOff = false;
         saveSettings();
-        setupWiFi();
-        // BUG FIX: if the radio was off at boot, the web server and MQTT
-        // were never started at all - re-arm them now that WiFi is back.
-        // initWebServer()/setupMQTT() are both now idempotent (safe to
-        // call again if they already started).
-        initWebServer();
-        setupMQTT();
+        // If the radio was off at boot, no connection stack was started at
+        // all - start the one the settings select now that WiFi is back.
+        ConnectionStackManager::startConfiguredStack();
     } else {
         blinkConfirm(4, 100);
         settings.wifiRadioOff = true;

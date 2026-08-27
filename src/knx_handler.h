@@ -1,10 +1,8 @@
 #ifndef KNX_HANDLER_H
 #define KNX_HANDLER_H
 
-#include "connection_stack_manager.h"
-
-// KNX IP Interface Stack functions - memory-efficient, no unnecessary allocations
-void initKNX(const KNXConfig& config);
+// KNX IP Interface Stack functions - placeholder, no KNX library wired up yet
+void initKNX();
 void shutdownKNX();
 bool isKNXActive();
 void handleKNX();

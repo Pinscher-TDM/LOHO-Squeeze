@@ -7,6 +7,7 @@
 #include "connection_stack_manager.h"
 #include "web_server.h"
 #include "mqtt_handler.h"
+#include "knx_handler.h"
 
 AppSettings settings;
 static Preferences prefs;
@@ -66,47 +67,25 @@ void setup() {
     //   2) KNX IP Interface
     //   3) MQTT Broker Client only
     //
-    // To switch stacks, setConnectionState() must be called before setup().
-    ConnectionState initialState = ConnectionState::NONE;
-    
-    if (!settings.wifiRadioOff && settings.matterEnabled && !settings.mqttEnabled) {
-        // Stack 1: Web Server + Matter (default)
-        initialState = ConnectionState::WEB_SERVER;
-    } else if (!settings.wifiRadioOff && settings.mqttEnabled && !settings.matterEnabled) {
-        // Stack 3: MQTT Broker Client only
-        initialState = ConnectionState::MQTT_ONLY;
-    }
-    
-    ConnectionStackManager::setConnectionState(initialState);
-
-    // Initialize the selected stack
-    if (initialState == ConnectionState::WEB_SERVER) {
-        Serial.println("[STACK] Starting Web Server + Matter stack...");
-        initWebServer(settings);
-    } else if (initialState == ConnectionState::MQTT_ONLY) {
-        Serial.println("[STACK] Starting MQTT Broker Client only stack...");
-        initMQTTBrokerClient(settings);
-    }
-
-    // If no stack was selected, stay in NONE state and do nothing
+    // If the settings don't select exactly one stack (or the Wi-Fi radio
+    // is switched off), this stays in NONE state and does nothing.
+    ConnectionStackManager::startConfiguredStack();
 }
 
 void loop() {
     // Handle the active connection stack
-    if (ConnectionStackManager::isAnyStackActive()) {
-        StackType active = ConnectionStackManager::getActiveStackType();
-        
-        switch (active) {
-            case StackType::WEB_SERVER_STACK:
-                handleWebServer();
-                break;
-            case StackType::MQTT_BROKER_STACK:
-                handleMQTTBrokerClient();
-                break;
-            default:
-                // KNX stack not yet implemented
-                break;
-        }
+    switch (ConnectionStackManager::getConnectionState()) {
+        case ConnectionState::WEB_SERVER:
+            handleWebServer();
+            break;
+        case ConnectionState::MQTT_ONLY:
+            handleMQTTBrokerClient();
+            break;
+        case ConnectionState::KNX:
+            handleKNX();
+            break;
+        default:
+            break;
     }
 
     // Handle button input (shared across all stacks)

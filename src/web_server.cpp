@@ -212,6 +212,29 @@ void initWebServerRoutes() {
     serverStarted = true;
 }
 
+// Web Server + Matter stack lifecycle - idempotent, safe to call again
+void initWebServer() {
+    if (serverStarted) return;
+    setupWiFi();               // also starts Matter once connected
+    initWebServerRoutes();
+}
+
+bool isWebServerActive() {
+    return serverStarted;
+}
+
+void shutdownWebServer() {
+    if (!serverStarted) return;
+    Serial.println("[WEB] Shutting down web server stack...");
+    server.stop();
+    dnsServer.stop();
+    if (apMode) {
+        WiFi.softAPdisconnect(true);
+        apMode = false;
+    }
+    serverStarted = false;
+}
+
 void handleWebServer() {
     if (!serverStarted) return;  // Not initialized yet
 
