@@ -40,7 +40,7 @@ static const int MAX_PACKETS_PER_PASS = 4;
 static WiFiUDP  udp;
 static bool     udpReady = false;
 
-static LohoPeer peers[MAX_PEERS];
+static DevicePeer peers[MAX_PEERS];
 static size_t   peerCount = 0;
 
 void initDiscovery() {
@@ -60,7 +60,7 @@ void broadcastPresence(const char* ssid, uint32_t lampId) {
     JsonDocument doc;
     doc["loho"] = 1;
     doc["id"]   = lampId;
-    doc["name"] = deviceHostname();
+    doc["name"] = getHostname();
     doc["ip"]   = WiFi.localIP().toString();
 
     char packet[192];
@@ -99,20 +99,6 @@ static void upsertPeer(uint32_t id, const char* name, const IPAddress& ip) {
     peers[slot].lastSeen = millis();
 }
 
-static void expirePeers() {
-    unsigned long now = millis();
-    size_t out = 0;
-    for (size_t i = 0; i < peerCount; i++) {
-        // Unsigned subtraction, so this stays correct across millis() rollover.
-        if (now - peers[i].lastSeen < PEER_TTL_MS) {
-            if (out != i) peers[out] = peers[i];
-            out++;
-        }
-    }
-    for (size_t i = out; i < peerCount; i++) peers[i] = LohoPeer();
-    peerCount = out;
-}
-
 void handleDiscovery() {
     if (!udpReady || WiFi.status() != WL_CONNECTED) return;
 
@@ -121,7 +107,7 @@ void handleDiscovery() {
     while (processed++ < MAX_PACKETS_PER_PASS && (len = udp.parsePacket()) > 0) {
         char buf[192];
         if (len >= (int)sizeof(buf)) {   // not one of ours - discard whole packet
-            udp.flush();
+            udp.clear();
             continue;
         }
         int n = udp.read(reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1);
@@ -145,14 +131,24 @@ void handleDiscovery() {
         upsertPeer(id, name, udp.remoteIP());
     }
 
-    expirePeers();
+    // Remove peers that haven't been seen recently.
+    unsigned long now = millis();
+    size_t out = 0;
+    for (size_t i = 0; i < peerCount; i++) {
+        if ((millis() - peers[i].lastSeen) >= PEER_TTL_MS) {
+            if (out != i) peers[out] = peers[i];
+            out++;
+        }
+    }
+    for (size_t i = out; i < peerCount; i++) peers[i] = DevicePeer{};
+    peerCount = out;
 }
 
 size_t getPeerCount() {
     return peerCount;
 }
 
-const LohoPeer* getPeer(size_t i) {
+const DevicePeer* getPeer(size_t i) {
     if (i >= peerCount) return nullptr;
     return &peers[i];
 }

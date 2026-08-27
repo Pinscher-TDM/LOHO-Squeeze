@@ -4,20 +4,20 @@
 #include <WiFi.h>
 #include "config.h"
 
-// Unique per-lamp ID derived from the efuse MAC (low 16 bits).
+// Unique per-lamp ID derived from the ESP efuse MAC (low 16 bits).
 static inline uint32_t getLampId() {
     return ESP.getEfuseMac() & 0xFFFF;
 }
 
-// Hostname format: "LOHO-Squeeze-XXXX" where XXXX is the hex lamp ID.
-// Delegates to deviceHostname() so there is exactly one implementation - the
+// Hostname format: "<prefix>-XXXX" where XXXX is the hex lamp ID.
+// Delegates to DEVICE_HOSTNAME so there is exactly one implementation - the
 // previous copy here used a char[16] buffer and truncated the ID.
 static inline String getHostname() {
-    return String(deviceHostname());
+    return String(DEVICE_HOSTNAME);
 }
 
-// A LOHO-Squeeze seen announcing itself on the local network.
-struct LohoPeer {
+// A device seen announcing itself on the local network.
+struct DevicePeer {
     uint32_t      id = 0;
     String        name;
     IPAddress     ip;
@@ -37,4 +37,4 @@ void handleDiscovery();
 void broadcastPresence(const char* ssid, uint32_t lampId);
 
 size_t           getPeerCount();
-const LohoPeer*  getPeer(size_t i);
+const DevicePeer* getPeer(size_t i);

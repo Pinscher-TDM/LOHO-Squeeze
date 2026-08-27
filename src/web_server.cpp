@@ -3,58 +3,24 @@
 #include "light_control.h"
 #include "mqtt_handler.h"
 #include "matter_handler.h"
-#include "discovery.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
-#include <ArduinoJson.h>
-#include <Preferences.h>
 
 static WebServer server(80);
 static DNSServer dnsServer;
 static bool apMode = false;
 static bool serverStarted = false;      // BUG FIX: guards against double-registering routes
 static unsigned long lastWifiRetry = 0;
-static bool fsReady = false;            // LittleFS mounted successfully?
 
-// Serves a file out of LittleFS, reporting *why* it is missing rather than
-// handing the browser a blank 200. Both failure modes are recoverable by the
-// user, so say exactly what to do about them.
-static void serveStaticFile(const char *path, const char *contentType) {
-    if (!fsReady) {
-        server.send(503, "text/plain",
-                    "Filesystem not mounted. Flash it with: pio run -t uploadfs");
-        return;
-    }
-    File f = LittleFS.open(path, "r");
-    if (!f || f.isDirectory()) {
-        server.send(404, "text/plain",
-                    "File missing from LittleFS. Flash it with: pio run -t uploadfs");
-        return;
-    }
-    server.streamFile(f, contentType);
-    f.close();
-}
-
+// WiFi setup - shared by web server and Matter stacks
 void setupWiFi() {
     if (settings.ssid.length() > 0) {
         WiFi.mode(WIFI_STA);
-        // The ESP32-C3 has a SINGLE radio shared by Wi-Fi and BLE. Matter
-        // advertises over BLE continuously while the device is uncommissioned,
-        // and coexistence arbitration hands a large share of airtime to BLE.
-        // Arduino additionally defaults Wi-Fi to modem sleep (WIFI_PS_MIN_MODEM),
-        // which compounds the loss: the station misses beacons, TCP reads blow
-        // their deadline, and NetworkClient::available() tears the HTTP
-        // connection down on EAGAIN without retrying (unlike write(), which
-        // explicitly tolerates it). Keeping the receiver always-on is the
-        // standard mitigation. This is a mains-powered lamp, so the extra
-        // current draw does not matter.
-        WiFi.setSleep(false);
-        WiFi.setHostname(deviceHostname());
+        WiFi.setHostname(DEVICE_HOSTNAME);
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
-        Serial.println("WiFi begin");
 
         unsigned long start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) delay(500);
@@ -62,20 +28,13 @@ void setupWiFi() {
 
     if (WiFi.status() == WL_CONNECTED) {
         apMode = false;
-        MDNS.begin(deviceHostname());
-        // BUG FIX: setupMatter() used to run here, inside setupWiFi(), which
-        // main.cpp calls *before* initWebServer(). That directly contradicted
-        // main.cpp's own comment ("Defer Matter until web server routes are
-        // registered") and meant the Matter stack was already running and
-        // competing for the network stack while the HTTP server was still
-        // being set up. main.cpp now starts Matter after the server is up.
-        Serial.printf("[BOOT] Connected to Wi-Fi: %s, IP: %s\n", settings.ssid.c_str(), WiFi.localIP().toString().c_str());
+        MDNS.begin(DEVICE_HOSTNAME);
+        setupMatter();
     } else {
         WiFi.mode(WIFI_AP);
         WiFi.softAP("LOHO-Squeeze");
         apMode = true;
         dnsServer.start(53, "*", WiFi.softAPIP());
-        Serial.printf("[BOOT] AP mode - IP: %s\n", WiFi.softAPIP().toString().c_str());
     }
 }
 
@@ -85,19 +44,13 @@ void setupWiFi() {
 // retries the saved credentials in the background every
 // WIFI_RETRY_INTERVAL_MS and tears the AP down the moment it connects.
 static void checkBackgroundReconnect() {
-    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
-        Serial.println("Wi-Fi connected in the background - shutting down fallback AP");
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("[WEB] Wi-Fi connected in the background - shutting down fallback AP");
         dnsServer.stop();
         WiFi.softAPdisconnect(true);
         WiFi.mode(WIFI_STA);
         apMode = false;
-        MDNS.begin(deviceHostname());
-        // BUG FIX: initDiscovery() bails out unless WiFi is already connected,
-        // and it only ran once during setup() - which in AP-fallback mode was
-        // before any connection existed. Recovering the link therefore left
-        // discovery permanently dead. Re-initialise it here, on the same path
-        // that restores mDNS and Matter.
-        initDiscovery();
+        MDNS.begin(DEVICE_HOSTNAME);
         setupMatter();
         return;
     }
@@ -109,38 +62,31 @@ static void checkBackgroundReconnect() {
     lastWifiRetry = now;
 
     WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleep(false);   // see setupWiFi(): Wi-Fi/BLE coexistence
     WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
 }
 
-void initWebServer() {
-    // BUG FIX: toggleWiFiRadio() can now call this again after the radio
-    // is turned back on - without this guard it would re-register every
-    // route a second time and call server.begin() twice.
-    if (serverStarted) return;
+// Web Server route registration - idempotent, safe to call multiple times
+void initWebServerRoutes() {
+    if (serverStarted) return;  // Already initialized
 
-    // BUG FIX: a LittleFS mount failure used to `return` here, which skipped
-    // every server.on() registration AND server.begin() - so the whole web UI
-    // silently vanished (no dashboard, no settings page, no way to fix the
-    // Wi-Fi credentials) instead of just the file-backed pages. Now we record
-    // the failure and start the server anyway: the JSON API is NVS-backed and
-    // keeps working, and the static routes report the real problem.
-    fsReady = LittleFS.begin(true);
-    if (!fsReady) {
-        Serial.println("[WEB] LittleFS mount failed - static pages unavailable.");
-        Serial.println("[WEB] Upload the filesystem image with: pio run -t uploadfs");
+    if (!LittleFS.begin(true)) {
+        Serial.println("[WEB] LittleFS Mount Failed");
+        return;
     }
 
     server.on("/", HTTP_GET, [&]() {
-        serveStaticFile("/index.html", "text/html");
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/html", LittleFS.open("/index.html", "r").readString());
     });
 
     server.on("/settings", HTTP_GET, [&]() {
-        serveStaticFile("/settings.html", "text/html");
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/html", LittleFS.open("/settings.html", "r").readString());
     });
 
     server.on("/style.css", HTTP_GET, [&]() {
-        serveStaticFile("/style.css", "text/css");
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/css", LittleFS.open("/style.css", "r").readString());
     });
 
     server.on("/api/state", HTTP_GET, [&]() {
@@ -148,6 +94,7 @@ void initWebServer() {
                       ",\"pwm\":" + String(currentPWM) +
                       ",\"minB\":" + String(settings.minBrightness) +
                       ",\"maxB\":" + String(settings.maxBrightness) + "}";
+        server.sendHeader("Connection", "close");
         server.send(200, "application/json", json);
     });
 
@@ -169,6 +116,7 @@ void initWebServer() {
         json += "\"mqttUser\":\"" + settings.mqttUser + "\",";
         json += "\"mqttTopic\":\"" + settings.mqttTopicBase + "\"";
         json += "}";
+        server.sendHeader("Connection", "close");
         server.send(200, "application/json", json);
     });
 
@@ -180,6 +128,7 @@ void initWebServer() {
         }
         applyPWM(true, true);
         saveSettings();
+        server.sendHeader("Connection", "close");
         server.send(200, "text/plain", "OK");
     });
 
@@ -187,14 +136,17 @@ void initWebServer() {
         // BUG FIX: this used to unconditionally report success even if
         // MQTT wasn't enabled/connected, so the button lied.
         if (!settings.mqttEnabled) {
+            server.sendHeader("Connection", "close");
             server.send(400, "text/plain", "MQTT is not enabled - turn it on and save first");
             return;
         }
         publishHADiscovery();
+        server.sendHeader("Connection", "close");
         server.send(200, "text/plain", "OK");
     });
 
-
+    // Matter status for settings.html to display (commissioned state,
+    // pairing code, QR code link).
     server.on("/api/matter-info", HTTP_GET, [&]() {
         String json = "{";
         json += "\"started\":" + String(isMatterStarted() ? "true" : "false") + ",";
@@ -202,56 +154,19 @@ void initWebServer() {
         json += "\"pairingCode\":\"" + getMatterPairingCode() + "\",";
         json += "\"qrUrl\":\"" + getMatterQRCodeUrl() + "\"";
         json += "}";
+        server.sendHeader("Connection", "close");
         server.send(200, "application/json", json);
     });
 
     server.on("/api/matter-pair", HTTP_GET, [&]() {
         if (!isMatterStarted()) {
+            server.sendHeader("Connection", "close");
             server.send(400, "text/plain", "Matter hasn't started - enable it, save, and make sure the device is connected to Wi-Fi");
             return;
         }
         openMatterCommissioningWindow();
+        server.sendHeader("Connection", "close");
         server.send(200, "text/plain", "Commissioning window opened - open your Home app now and scan the code below");
-    });
-
-    // List all LOHO-Squeeze devices on the network (for multi-lamp control).
-    //
-    // BUG FIX: this used createNestedObject("devices"), which emits a single
-    // JSON *object* - but index.html does `devices.length` and `devices[0]`,
-    // so `.length` was undefined, the render bailed out early, and the device
-    // list silently stayed empty. It also only ever described this device,
-    // because nothing collected peers. Now it emits a proper array of self +
-    // everything handleDiscovery() has heard from.
-    //
-    // StaticJsonDocument is deprecated in ArduinoJson 7; JsonDocument sizes
-    // itself, which also removes the 512-byte cap that would have truncated
-    // the list once a few lamps showed up.
-    server.on("/api/devices", HTTP_GET, [&]() {
-        JsonDocument doc;
-        uint32_t myId = getLampId();
-        doc["myId"] = myId;
-
-        JsonArray devices = doc["devices"].to<JsonArray>();
-
-        JsonObject self = devices.add<JsonObject>();
-        self["id"]   = myId;
-        self["name"] = deviceHostname();
-        self["ip"]   = WiFi.localIP().toString();
-        self["self"] = true;
-
-        for (size_t i = 0; i < getPeerCount(); i++) {
-            const LohoPeer* p = getPeer(i);
-            if (!p) continue;
-            JsonObject d = devices.add<JsonObject>();
-            d["id"]   = p->id;
-            d["name"] = p->name;
-            d["ip"]   = p->ip.toString();
-            d["self"] = false;
-        }
-
-        String json;
-        serializeJson(doc, json);
-        server.send(200, "application/json", json);
     });
 
     server.on("/save", HTTP_POST, [&]() {
@@ -276,6 +191,7 @@ void initWebServer() {
         settings.matterEnabled = server.hasArg("matterEnabled");
         saveSettings();
 
+        server.sendHeader("Connection", "close");
         server.send(200, "text/html", "Saved. Rebooting...");
         delay(1000);
         ESP.restart();
@@ -284,18 +200,21 @@ void initWebServer() {
     server.onNotFound([&]() {
         if (apMode) {
             server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+            server.sendHeader("Connection", "close");
             server.send(302, "text/plain", "");
         } else {
+            server.sendHeader("Connection", "close");
             server.send(404, "text/plain", "Not found");
         }
     });
 
     server.begin();
-    Serial.println("[WEB] Server started");
     serverStarted = true;
 }
 
 void handleWebServer() {
+    if (!serverStarted) return;  // Not initialized yet
+
     server.handleClient();
     if (apMode) {
         dnsServer.processNextRequest();

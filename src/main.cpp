@@ -4,10 +4,9 @@
 #include "config.h"
 #include "light_control.h"
 
-#include "mqtt_handler.h"
+#include "connection_stack_manager.h"
 #include "web_server.h"
-#include "discovery.h"
-#include "matter_handler.h"
+#include "mqtt_handler.h"
 
 AppSettings settings;
 static Preferences prefs;
@@ -58,45 +57,66 @@ void saveSettings() {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("LOHO-Squeeze booting...");
     loadSettings();
     initLightControl();
 
-    if (!settings.wifiRadioOff) {
-        setupWiFi();
-        // Initialize discovery (hostname + UDP socket) after WiFi is ready
-        initDiscovery();
-        initWebServer();
-        setupMQTT();
-        // Defer Matter until web server routes are registered to avoid CLUSTERS
-        // KeyError. This comment described the intent, but setupMatter() was
-        // actually being called from inside setupWiFi() above - i.e. before the
-        // web server existed. Now it genuinely runs last.
-        setupMatter();
-    } else {
-        WiFi.mode(WIFI_OFF);
+    // Single-Connection-Stack Architecture:
+    // Only ONE connection stack runs at a time. Choose one of:
+    //   1) Web Server + Matter (shares WiFi)
+    //   2) KNX IP Interface
+    //   3) MQTT Broker Client only
+    //
+    // To switch stacks, setConnectionState() must be called before setup().
+    ConnectionState initialState = ConnectionState::NONE;
+    
+    if (!settings.wifiRadioOff && settings.matterEnabled && !settings.mqttEnabled) {
+        // Stack 1: Web Server + Matter (default)
+        initialState = ConnectionState::WEB_SERVER;
+    } else if (!settings.wifiRadioOff && settings.mqttEnabled && !settings.matterEnabled) {
+        // Stack 3: MQTT Broker Client only
+        initialState = ConnectionState::MQTT_ONLY;
     }
+    
+    ConnectionStackManager::setConnectionState(initialState);
+
+    // Initialize the selected stack
+    if (initialState == ConnectionState::WEB_SERVER) {
+        Serial.println("[STACK] Starting Web Server + Matter stack...");
+        initWebServer(settings);
+    } else if (initialState == ConnectionState::MQTT_ONLY) {
+        Serial.println("[STACK] Starting MQTT Broker Client only stack...");
+        initMQTTBrokerClient(settings);
+    }
+
+    // If no stack was selected, stay in NONE state and do nothing
 }
 
 void loop() {
-    if (!settings.wifiRadioOff) {
-        handleWebServer();
-        // BUG FIX: setupMQTT() was called in setup(), but handleMQTT() -
-        // which actually connects and processes messages - was never
-        // called anywhere. MQTT was effectively dead code before this.
-        handleMQTT();
-
-        // BUG FIX: handleDiscovery() was declared in web_server.h but never
-        // defined or called, so inbound announcements were never read and the
-        // peer list was always empty - discovery only ever transmitted.
-        handleDiscovery();
-
-        // Periodic presence broadcast (every 60s) so other lamps can discover us
-        static unsigned long lastBroadcast = 0;
-        if (millis() - lastBroadcast >= 60000UL) {
-            lastBroadcast = millis();
-            broadcastPresence(settings.ssid.c_str(), getLampId());
+    // Handle the active connection stack
+    if (ConnectionStackManager::isAnyStackActive()) {
+        StackType active = ConnectionStackManager::getActiveStackType();
+        
+        switch (active) {
+            case StackType::WEB_SERVER_STACK:
+                handleWebServer();
+                break;
+            case StackType::MQTT_BROKER_STACK:
+                handleMQTTBrokerClient();
+                break;
+            default:
+                // KNX stack not yet implemented
+                break;
         }
     }
+
+    // Handle button input (shared across all stacks)
     handleButton();
+
+    // Diagnostic: prints free heap every 10s. Useful for confirming
+    // whether memory pressure is contributing to issues.
+    static unsigned long lastHeapLog = 0;
+    if (millis() - lastHeapLog > 10000) {
+        lastHeapLog = millis();
+        Serial.printf("[diag] free heap: %u bytes\n", ESP.getFreeHeap());
+    }
 }

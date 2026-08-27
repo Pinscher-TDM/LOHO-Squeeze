@@ -28,7 +28,7 @@ uint32_t gammaCorrect(uint8_t level) {
 }
 
 void initLightControl() {
-    Serial.println("init light control");
+    pinMode(BUTTON_PIN, INPUT_PULLDOWN);
 
     // BUG FIX: the LEDC channel was never attached to the pin anywhere in
     // the project, so ledcWrite() had nothing to actually drive. This is

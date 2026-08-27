@@ -1,16 +1,4 @@
-# ESP32-C3 4MB Flash Partition Table
-# Bootloader occupies 0x0-0x8000, partition table 0x8000-0x9000.
-#
-# Factory-only layout: there is no OTA code in this firmware (no Update.h /
-# ArduinoOTA), so the ota_0/ota_1/otadata trio would only waste flash. Matter +
-# WiFi + BLE + mDNS + WebServer needs a large app partition, so nearly all
-# remaining flash goes to the app; data/ is only ~9KB of HTML/CSS, so the
-# LittleFS partition stays small.
-#
-# The filesystem partition MUST keep SubType "spiffs" even though we format it
-# as LittleFS - the tooling locates it by subtype, not by name.
-#
-# Name,     Type, SubType,  Offset,   Size,     Flags
-nvs,        data, nvs,      0x9000,   0x5000,
-app,        app,  factory,  0x10000,  0x360000,
-spiffs,     data, spiffs,   0x370000, 0x90000,
+# Name,   Type, SubType,  Offset,   Size,     Flags
+nvs,      data, nvs,      0x9000,   0x5000,
+app,      app,  factory,  0x10000,  0x360000,
+spiffs,   data, spiffs,   0x370000, 0x90000,

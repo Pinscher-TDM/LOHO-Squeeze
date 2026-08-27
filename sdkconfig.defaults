@@ -1,0 +1,32 @@
+# Matter's CHIP stack (mDNS discovery, UDP multicast, and one TCP session
+# per connected controller) plus our own WebServer, MQTT client, and mDNS
+# responder can exceed the default LWIP socket table (10) once the device
+# is actually on a real Wi-Fi network with real traffic - this is the
+# likely cause of "write(): fail ... errno: 11" (EAGAIN, mislabeled by the
+# ESP32 errno table as "No more processes") once things get busy.
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# Disable Bluetooth/BLE entirely to free RAM (NimBLE is routinely one of
+# the single largest RAM consumers on the C3 - often 40-70KB+). This is
+# safe for us specifically because Wi-Fi is already connected via our own
+# captive-portal flow *before* Matter.begin() ever runs, so Matter can use
+# IP-based ("on network") commissioning instead of BLE - this is standard
+# Matter spec behavior, not a hack, and works with every major ecosystem
+# for devices that already have network connectivity.
+#
+# CAVEAT: if the Matter component in your installed core references BLE
+# symbols unconditionally at compile time, this line alone will break the
+# build with unresolved BLE references. If that happens, just delete this
+# line - it costs you nothing to try, and nothing to revert.
+CONFIG_BT_ENABLED=n
+
+# pioarduino/ESP-IDF only picks this file up on a full reconfigure - after
+# adding/changing it, run: pio run --target clean, then a normal build.
+#
+# To explore further RAM/RAM-adjacent Matter tuning options interactively
+# (exact Kconfig symbol names vary across CHIP/ESP-IDF versions, so it's
+# safer to browse than guess): run `pio run -t menuconfig`, then look
+# under Component config > CHIP Device Layer for things like the max
+# number of simultaneous controller (CASE) sessions or supported fabrics -
+# lowering those from their defaults trims a bit more static RAM if you
+# only ever intend to pair this into one or two ecosystems.

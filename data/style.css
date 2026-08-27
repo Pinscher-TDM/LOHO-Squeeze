@@ -88,32 +88,3 @@ a {
   text-decoration: none;
   font-size: 11px;
 }
-/* Device list on the dashboard. index.html and settings.html both reference
-   .link-row, which previously had no rule at all. */
-#devices-container {
-  list-style: none;
-  padding: 0;
-  margin: 8px 0 0;
-  text-align: left;
-}
-
-#devices-container li {
-  padding: 10px 12px;
-  margin-bottom: 6px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  font-size: 13px;
-}
-
-#devices-container li.self {
-  border-color: var(--accent);
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.link-row {
-  margin-top: 16px;
-}

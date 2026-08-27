@@ -2,110 +2,28 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LOHO-Squeeze - Multi-Device Control</title>
+    <title>LED Control</title>
     <link rel="stylesheet" type="text/css" href="/style.css">
 </head>
 <body>
     <div class="card">
-        <h1>LOHO-Squeeze</h1>
-        <div class="status" id="deviceName">&nbsp;</div>
-
-        <button type="button" class="btn" id="toggleBtn">Toggle</button>
-        <input type="range" id="dimmer" min="0" max="255" value="128"
-               aria-label="Brightness">
-        <div class="status" id="state">Loading&hellip;</div>
-
-        <h2>Devices on network</h2>
-        <ul id="devices-container">
-            <li class="muted">Searching&hellip;</li>
-        </ul>
-
-        <div class="link-row"><a href="/settings">SETTINGS</a></div>
+        <h1>LED Control</h1>
+        <button class="btn" onclick="fetch('/api/control?toggle=1').then(syncState)">Toggle On / Off</button>
+        <input type="range" id="dimmer" onchange="fetch('/api/control?pwm=' + this.value)">
+        <div class="status" id="status">Loading...</div>
+        <br><br>
+        <a href="/settings">SETTINGS</a>
     </div>
-
     <script>
-        const $ = (id) => document.getElementById(id);
-
-        // Serialise control writes. /api/control persists to NVS on every call,
-        // so the slider fires on "change" (release) rather than "input".
-        async function control(query) {
-            try {
-                await fetch('/api/control?' + query);
-            } catch (e) {
-                console.error('control failed', e);
-            }
-            refreshState();
+        function syncState() {
+            fetch('/api/state').then(r => r.json()).then(data => {
+                document.getElementById('dimmer').min = data.minB;
+                document.getElementById('dimmer').max = data.maxB;
+                document.getElementById('dimmer').value = data.pwm;
+                document.getElementById('status').innerText = 'Light is currently ' + (data.ledOn ? 'ON' : 'OFF');
+            });
         }
-
-        async function refreshState() {
-            try {
-                const r = await fetch('/api/state');
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const d = await r.json();
-
-                const slider = $('dimmer');
-                slider.min = d.minB;
-                slider.max = d.maxB;
-                // Don't fight the user while they are dragging the handle.
-                if (document.activeElement !== slider) slider.value = d.pwm;
-
-                $('state').innerHTML = d.ledOn
-                    ? '<span style="color:#4CAF50">ON</span> &middot; PWM ' + d.pwm
-                    : '<span style="color:#999">OFF</span> &middot; PWM ' + d.pwm;
-            } catch (e) {
-                $('state').textContent = 'Device unreachable';
-            }
-        }
-
-        // BUG FIX: the previous version appended the status inside a .then()
-        // but assigned container.innerHTML synchronously right after, so the
-        // fetch always resolved too late and its output was thrown away.
-        // Awaiting the data before touching the DOM removes the race.
-        async function loadDevices() {
-            const container = $('devices-container');
-            try {
-                const r = await fetch('/api/devices');
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const data = await r.json();
-                const devices = data.devices || [];
-
-                if (!devices.length) {
-                    container.innerHTML = '<li class="muted">No devices found.</li>';
-                    return;
-                }
-
-                container.innerHTML = devices.map(function (dev) {
-                    const label = dev.self
-                        ? ' <em>(this device)</em>'
-                        : '';
-                    const link = dev.self
-                        ? dev.ip
-                        : '<a href="http://' + dev.ip + '/">' + dev.ip + '</a>';
-                    return '<li' + (dev.self ? ' class="self"' : '') + '>' +
-                           '<strong>' + dev.name + '</strong>' + label +
-                           '<br><span class="muted">' + link + '</span></li>';
-                }).join('');
-            } catch (e) {
-                console.error(e);
-                container.innerHTML =
-                    '<li class="muted">Could not load devices. ' +
-                    'Make sure this device is connected to Wi-Fi.</li>';
-            }
-        }
-
-        $('toggleBtn').addEventListener('click', () => control('toggle=1'));
-        $('dimmer').addEventListener('change', (e) => control('pwm=' + e.target.value));
-
-        fetch('/api/settings')
-            .then(r => r.json())
-            .then(s => { if (s.ssid) $('deviceName').textContent = 'Wi-Fi: ' + s.ssid; })
-            .catch(() => {});
-
-        refreshState();
-        loadDevices();
-        setInterval(refreshState, 3000);
-        // Peers announce every 60s, so polling the list faster buys nothing.
-        setInterval(loadDevices, 30000);
+        syncState();
     </script>
 </body>
 </html>
