@@ -11,6 +11,7 @@
         <button class="btn" onclick="fetch('/api/control?toggle=1').then(syncState)">Toggle On / Off</button>
         <input type="range" id="dimmer" onchange="fetch('/api/control?pwm=' + this.value)">
         <div class="status" id="status">Loading...</div>
+        <div class="status" id="btnstatus"></div>
         <br><br>
         <a href="/settings">SETTINGS</a>
     </div>
@@ -21,9 +22,11 @@
                 document.getElementById('dimmer').max = data.maxB;
                 document.getElementById('dimmer').value = data.pwm;
                 document.getElementById('status').innerText = 'Light is currently ' + (data.ledOn ? 'ON' : 'OFF');
+                document.getElementById('btnstatus').innerText = 'Button: ' + (data.btn ? 'PRESSED' : 'released');
             });
         }
         syncState();
+        setInterval(syncState, 1000);
     </script>
 </body>
 </html>

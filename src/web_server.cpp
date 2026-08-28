@@ -1,6 +1,6 @@
 #include "web_server.h"
 #include "config.h"
-#include "light_control.h"
+#include "light_control.h"   // isButtonPressed() for /api/state
 #include "mqtt_handler.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -121,6 +121,7 @@ void initWebServerRoutes() {
 
     server.on("/api/state", HTTP_GET, [&]() {
         String json = "{\"ledOn\":" + String(ledOn ? "true" : "false") +
+                      ",\"btn\":" + String(isButtonPressed() ? "true" : "false") +
                       ",\"pwm\":" + String(currentPWM) +
                       ",\"minB\":" + String(settings.minBrightness) +
                       ",\"maxB\":" + String(settings.maxBrightness) + "}";

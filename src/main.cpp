@@ -42,6 +42,11 @@ void loadSettings() {
     settings.knxEnabled = prefs.getBool("knxEn", false);
 
     settings.wifiRadioOff = prefs.getBool("wifiOff", false);
+
+    // Restore the light's last on/off state - saveSettings() stores it but
+    // it was never read back, so the light always booted "off".
+    ledOn = prefs.getBool("ledOn", false);
+    currentPWM = settings.lastPWM;
     prefs.end();
 }
 
