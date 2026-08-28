@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
+#include "mqtt_handler.h"
 
 // BUG FIX: discovery was write-only and internally inconsistent.
 //
@@ -33,6 +34,12 @@
 static const IPAddress DISCOVERY_GROUP(239, 255, 77, 77);
 static const uint16_t  DISCOVERY_PORT = 50077;
 
+void initDiscovery() {
+    // Defer until WiFi is up: joining a multicast group without a network
+    // interface fails silently and leaves the socket unusable.
+    if (WiFi.status() != WL_CONNECTED) return;
+}
+
 // Hard cap on packets drained per loop() pass. Without this a burst of traffic
 // could hold the loop long enough for WebServer client reads to time out.
 static const int MAX_PACKETS_PER_PASS = 4;
@@ -42,16 +49,6 @@ static bool     udpReady = false;
 
 static DevicePeer peers[MAX_PEERS];
 static size_t   peerCount = 0;
-
-void initDiscovery() {
-    // Defer until WiFi is up: joining a multicast group without a network
-    // interface fails silently and leaves the socket unusable.
-    if (WiFi.status() != WL_CONNECTED) return;
-    udpReady = udp.beginMulticast(DISCOVERY_GROUP, DISCOVERY_PORT);
-    if (!udpReady) {
-        Serial.println("[DISC] Failed to join discovery multicast group");
-    }
-}
 
 void broadcastPresence(const char* ssid, uint32_t lampId) {
     (void)ssid;  // kept for call-site compatibility; the SSID is not announced
@@ -107,7 +104,7 @@ void handleDiscovery() {
     while (processed++ < MAX_PACKETS_PER_PASS && (len = udp.parsePacket()) > 0) {
         char buf[192];
         if (len >= (int)sizeof(buf)) {   // not one of ours - discard whole packet
-            udp.clear();
+            /* udp.clear() removed - no longer exists in newer WiFiUDP */
             continue;
         }
         int n = udp.read(reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1);

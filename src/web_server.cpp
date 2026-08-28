@@ -2,7 +2,6 @@
 #include "config.h"
 #include "light_control.h"
 #include "mqtt_handler.h"
-#include "matter_handler.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
@@ -15,7 +14,7 @@ static bool apMode = false;
 static bool serverStarted = false;      // BUG FIX: guards against double-registering routes
 static unsigned long lastWifiRetry = 0;
 
-// WiFi setup - shared by web server and Matter stacks
+// WiFi setup - shared by web server stack
 void setupWiFi() {
     if (settings.ssid.length() > 0) {
         WiFi.mode(WIFI_STA);
@@ -29,7 +28,7 @@ void setupWiFi() {
     if (WiFi.status() == WL_CONNECTED) {
         apMode = false;
         MDNS.begin(DEVICE_HOSTNAME);
-        setupMatter();
+        initHomeSpan();
     } else {
         WiFi.mode(WIFI_AP);
         WiFi.softAP("LOHO-Squeeze");
@@ -51,7 +50,6 @@ static void checkBackgroundReconnect() {
         WiFi.mode(WIFI_STA);
         apMode = false;
         MDNS.begin(DEVICE_HOSTNAME);
-        setupMatter();
         return;
     }
 
@@ -68,6 +66,11 @@ static void checkBackgroundReconnect() {
 // Web Server route registration - idempotent, safe to call multiple times
 void initWebServerRoutes() {
     if (serverStarted) return;  // Already initialized
+    
+    // Only start web server routes if KNX is not enabled (single-stack architecture)
+    if (settings.knxEnabled) return;
+    
+    Serial.println("[WEB] Initializing web server routes");
 
     if (!LittleFS.begin(true)) {
         Serial.println("[WEB] LittleFS Mount Failed");
@@ -109,8 +112,11 @@ void initWebServerRoutes() {
         json += "\"minB\":" + String(settings.minBrightness) + ",";
         json += "\"maxB\":" + String(settings.maxBrightness) + ",";
         json += "\"speed\":" + String(settings.dimSpeed) + ",";
-        json += "\"matterEnabled\":" + String(settings.matterEnabled ? "true" : "false") + ",";
-        json += "\"mqttEnabled\":" + String(settings.mqttEnabled ? "true" : "false") + ",";
+        json += "\"homespanEnabled\":" + String(settings.homespanEnabled ? "true" : "false") + ",";
+        if (settings.homespanDeviceId.length() > 0) {
+            json += "\"homespanDeviceId\":\"" + settings.homespanDeviceId + "\",";
+        }
+
         json += "\"mqttServer\":\"" + settings.mqttServer + "\",";
         json += "\"mqttPort\":" + String(settings.mqttPort) + ",";
         json += "\"mqttUser\":\"" + settings.mqttUser + "\",";
@@ -126,7 +132,7 @@ void initWebServerRoutes() {
             currentPWM = constrain(server.arg("pwm").toInt(), settings.minBrightness, settings.maxBrightness);
             ledOn = true;
         }
-        applyPWM(true, true);
+        applyPWM(true);
         saveSettings();
         server.sendHeader("Connection", "close");
         server.send(200, "text/plain", "OK");
@@ -145,30 +151,6 @@ void initWebServerRoutes() {
         server.send(200, "text/plain", "OK");
     });
 
-    // Matter status for settings.html to display (commissioned state,
-    // pairing code, QR code link).
-    server.on("/api/matter-info", HTTP_GET, [&]() {
-        String json = "{";
-        json += "\"started\":" + String(isMatterStarted() ? "true" : "false") + ",";
-        json += "\"commissioned\":" + String(isMatterCommissioned() ? "true" : "false") + ",";
-        json += "\"pairingCode\":\"" + getMatterPairingCode() + "\",";
-        json += "\"qrUrl\":\"" + getMatterQRCodeUrl() + "\"";
-        json += "}";
-        server.sendHeader("Connection", "close");
-        server.send(200, "application/json", json);
-    });
-
-    server.on("/api/matter-pair", HTTP_GET, [&]() {
-        if (!isMatterStarted()) {
-            server.sendHeader("Connection", "close");
-            server.send(400, "text/plain", "Matter hasn't started - enable it, save, and make sure the device is connected to Wi-Fi");
-            return;
-        }
-        openMatterCommissioningWindow();
-        server.sendHeader("Connection", "close");
-        server.send(200, "text/plain", "Commissioning window opened - open your Home app now and scan the code below");
-    });
-
     server.on("/save", HTTP_POST, [&]() {
         if (server.hasArg("ssid")) settings.ssid = server.arg("ssid");
         // BUG FIX: only overwrite the password if a new one was actually
@@ -177,6 +159,8 @@ void initWebServerRoutes() {
         if (server.hasArg("password") && server.arg("password").length() > 0) {
             settings.password = server.arg("password");
         }
+        if (server.hasArg("homespanEnabled")) settings.homespanEnabled = server.hasArg("homespanEnabled");
+        if (server.hasArg("homespanDeviceId")) settings.homespanDeviceId = server.arg("homespanDeviceId");
         if (server.hasArg("minB")) settings.minBrightness = server.arg("minB").toInt();
         if (server.hasArg("maxB")) settings.maxBrightness = server.arg("maxB").toInt();
         if (server.hasArg("speed")) settings.dimSpeed = server.arg("speed").toInt();
@@ -188,7 +172,6 @@ void initWebServerRoutes() {
             settings.mqttPass = server.arg("mqttPass");
         }
         if (server.hasArg("mqttTopic")) settings.mqttTopicBase = server.arg("mqttTopic");
-        settings.matterEnabled = server.hasArg("matterEnabled");
         saveSettings();
 
         server.sendHeader("Connection", "close");
@@ -212,15 +195,15 @@ void initWebServerRoutes() {
     serverStarted = true;
 }
 
-// Web Server + Matter stack lifecycle - idempotent, safe to call again
+// Web Server stack lifecycle - idempotent, safe to call again
 void initWebServer() {
     if (serverStarted) return;
-    setupWiFi();               // also starts Matter once connected
+    setupWiFi();
     initWebServerRoutes();
 }
 
 bool isWebServerActive() {
-    return serverStarted;
+    return serverStarted && !settings.mqttEnabled;  // MQTT_ONLY mode disables web server
 }
 
 void shutdownWebServer() {

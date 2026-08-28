@@ -13,13 +13,14 @@
             <label>SSID</label><input type="text" name="ssid" id="ssid">
             <label>Password</label><input type="password" name="password" placeholder="Leave blank to keep current password">
 
-            <h2>Matter</h2>
-            <label><input type="checkbox" name="matterEnabled" id="matterEnabled"> Enable Matter</label>
-            <div class="status" id="matterStatus">Checking...</div>
-            <div class="status" id="matterCode"></div>
-            <div class="link-row" id="matterQrLink"></div>
-            <button type="button" class="btn btn-sec" onclick="pairMatter()">Open Commissioning Window</button>
-            <div class="status">One pairing code/QR works for Apple Home, Google Home, Home Assistant, or any other Matter app - open that app's "Add Device" flow and scan/enter it there. Matter supports being added to multiple ecosystems at once, but each one has to commission it separately.</div>
+            <h2>KNX</h2>
+            <label><input type="checkbox" name="knxEnabled" id="knxEnabled"> Enable KNX</label>
+            <div class="status" id="knxStatus">Checking...</div>
+            <button type="button" class="btn btn-sec" onclick="pairKnx()">Open Commissioning Window</button>
+
+            <h2>HomeSpan (MQTT)</h2>
+            <label><input type="checkbox" name="homespanEnabled" id="homespanEnabled"> Enable HomeSpan</label>
+            <label>Device ID</label><input type="text" name="homespanDeviceId" id="homespanDeviceId" placeholder="e.g. livingroom">
 
             <h2>Home Assistant (MQTT)</h2>
             <label><input type="checkbox" name="mqttEnabled" id="mqttEnabled"> Enable MQTT</label>
@@ -43,8 +44,14 @@
     <script>
         fetch('/api/settings').then(r => r.json()).then(data => {
             document.getElementById('ssid').value = data.ssid;
-            document.getElementById('matterEnabled').checked = data.matterEnabled;
             document.getElementById('mqttEnabled').checked = data.mqttEnabled;
+            if (data.knxEnabled) {
+                document.getElementById('knxEnabled').checked = true;
+            }
+            document.getElementById('homespanEnabled').checked = data.homespanEnabled;
+            if (data.homespanDeviceId) {
+                document.getElementById('homespanDeviceId').value = data.homespanDeviceId;
+            }
             document.getElementById('mqttServer').value = data.mqttServer;
             document.getElementById('mqttPort').value = data.mqttPort;
             document.getElementById('mqttUser').value = data.mqttUser;
@@ -54,19 +61,8 @@
             document.getElementById('speed').value = data.speed;
         });
 
-        fetch('/api/matter-info').then(r => r.json()).then(data => {
-            const statusEl = document.getElementById('matterStatus');
-            const codeEl = document.getElementById('matterCode');
-            const qrEl = document.getElementById('matterQrLink');
-            if (!data.started) {
-                statusEl.textContent = 'Matter not active (enable it above, save & reboot while connected to Wi-Fi)';
-                return;
-            }
-            statusEl.textContent = data.commissioned ? 'Added to at least one smart home app' : 'Not added to any smart home app yet';
-            if (data.pairingCode) codeEl.textContent = 'Pairing code: ' + data.pairingCode;
-            if (data.qrUrl) qrEl.innerHTML = '<a href="' + data.qrUrl + '" target="_blank">Open QR Code</a>';
-        }).catch(() => {
-            document.getElementById('matterStatus').textContent = 'Could not load Matter status';
+        fetch('/api/state').then(r => r.json()).then(data => {
+            alert('Light: ' + (data.ledOn ? 'ON' : 'OFF'));
         });
 
         function haDiscover() {
@@ -79,9 +75,6 @@
             });
         }
 
-        function pairMatter() {
-            fetch('/api/matter-pair').then(r => r.text()).then(t => alert(t));
-        }
     </script>
 </body>
 </html>

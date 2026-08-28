@@ -3,12 +3,8 @@
 
 #include <Arduino.h>
 
-extern bool ledOn;
-extern int currentPWM;
-extern bool dimDirectionUp;
-
 void initLightControl();
-void applyPWM(bool publish, bool updateMatter);
+void applyPWM(bool echo = false);
 void handleButton();
 void toggleWiFiRadio();
 void blinkConfirm(int times, int gapMs);

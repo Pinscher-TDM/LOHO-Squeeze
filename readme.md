@@ -1,12 +1,11 @@
 # LOHO Squeeze
 
-A robust IoT light control solution built on an ESP32-C3, featuring multi-protocol connectivity (Matter & MQTT), a web interface with custom styling, and modular handler components for easy extension.
+A robust IoT light control solution built on an ESP32-C3, featuring MQTT connectivity and a web interface with custom styling.
 
 ## Features
 
 ### Connectivity & Discovery
 - **SSDP Discovery**: Announces device presence via SSDP multicast (224.0.0.251:1900) after WiFi connects and MDNS is initialized; unique lamp ID derived from ESP32-C3 efuse MAC address.
-- **Matter Protocol**: Full Matter dimmable light integration for smart home control (HomeKit, Google Home, Home Assistant).
 - **MQTT Integration**: Publishes state to MQTT topics and supports remote on/off/brightness commands; includes Home Assistant discovery payloads.
 
 ### Web Interface
@@ -46,14 +45,13 @@ Skip `uploadfs` and the device boots fine but every page returns
 "Filesystem not mounted".
 
 If you change `partitions.csv`, erase the chip first. NVS lives at a fixed
-offset, so a re-layout leaves stale settings (Wi-Fi credentials, Matter
-commissioning) that decode as garbage:
+offset, so a re-layout leaves stale settings (Wi-Fi credentials) that decode as garbage:
 
 ```bash
 pio run -t erase
 ```
 
-### Troubleshooting: web UI unreachable when Matter is enabled
+### Troubleshooting: web UI unreachable
 
 Symptom: the device joins Wi-Fi and gets an IP, but the web page will not load,
 and the serial monitor repeats:
@@ -62,47 +60,16 @@ and the serial monitor repeats:
 fail on fd <N>, errno: 11, "No more processes"
 ```
 
-`errno 11` is `EAGAIN`. The "No more processes" text is newlib's legacy string
-for that code - it has nothing to do with processes or with running out of any
-resource, and it is a red herring.
+`errno 11` is `EAGAIN`. The ESP32-C3 has a **single radio** shared between Wi-Fi and BLE.
+When both stacks are active, coexistence arbitration can cause Wi-Fi reads to miss their
+deadline. This project only runs the web server stack, so this shouldn't happen:
+but if you ever see it, try disabling any BLE advertising or rebooting.
 
-Cause: the ESP32-C3 has a **single radio** shared between Wi-Fi and BLE. While
-Matter is uncommissioned it advertises over BLE continuously, and coexistence
-arbitration hands a large share of airtime to BLE. Wi-Fi reads then miss their
-deadline and return EAGAIN - and `NetworkClient::available()` in the Arduino
-core calls `stop()` on that without retrying (unlike `write()`, which
-explicitly tolerates EAGAIN), so the HTTP connection is torn down mid-request.
-
-This does not appear in AP mode, because Matter only starts once
-`WiFi.status() == WL_CONNECTED`.
-
-Fix: **this project does not use BLE at all.** `setupMatter()` only runs once
-`WiFi.status() == WL_CONNECTED`, so the device always already has IP
-connectivity and can be commissioned *on-network*. After `Matter.begin()`,
-`matter_handler.cpp` closes the BLE-advertising window that the stack opens by
-default and reopens it with `CommissioningWindowAdvertisement::kDnssdOnly` -
-mDNS discovery, no BLE advertising. This is the same approach the Matter
-library itself uses after the last fabric is removed (see the `kFabricRemoved`
-handler in the library's `Matter.cpp`).
-
-Confirm it on the serial log at boot:
+Confirm on serial that the device is in STA mode:
 
 ```
-Matter: commissioning over the network (DNS-SD), BLE off.
+[STACK] Starting Web Server stack...
 ```
-
-Commission by entering the manual pairing code (or scanning the QR) from the
-Settings page. Apple Home, Google Home and Home Assistant all support
-on-network commissioning for a device already on the LAN.
-
-`WiFi.setSleep(false)` is also applied in `setupWiFi()` - Arduino defaults Wi-Fi
-to modem sleep, which compounds any remaining airtime loss.
-
-Note that the Arduino Matter API itself exposes no way to close the
-commissioning window (only `begin()`, `decommission()` and queries), which is
-why `matter_handler.cpp` reaches through to the underlying CHIP
-`CommissioningWindowManager` directly - under the CHIP stack lock, since that
-API is not thread-safe.
 
 ### Flash layout
 
@@ -117,15 +84,9 @@ API is not thread-safe.
 | `app` (factory) | `0x10000` | 3456 KB |
 | `spiffs` (LittleFS) | `0x370000` | 576 KB |
 
-Matter + Wi-Fi + BLE + mDNS + WebServer is a large binary, so most of the flash
-goes to the app. If a build ever fails to boot with `Image length ... doesn't
-fit in partition length` / `No bootable app partition`, the app outgrew its
-partition - that message comes from the bootloader, not from the upload.
+The binary is a large one, so most of the flash goes to the app. If a build ever fails to boot with `Image length ... doesn't fit in partition length` / `No bootable app partition`, the app outgrew its partition - that message comes from the bootloader, not from the upload.
 
-The `spiffs` partition keeps that name and SubType deliberately even though it
-is formatted as LittleFS: both `LittleFS.begin()` and `uploadfs` locate the
-partition by subtype, and naming it `littlefs` trips a warning in
-`gen_esp32part.py`.
+The `spiffs` partition keeps that name and SubType deliberately even though it is formatted as LittleFS: both `LittleFS.begin()` and `uploadfs` locate the partition by subtype, and naming it `littlefs` trips a warning in `gen_esp32part.py`.
 
 ## Configuration (`platformio.ini`)
 
@@ -136,8 +97,8 @@ The project is configured for the `esp32c3` environment with required libraries 
 - `src/main.cpp`: Entry point initializing all subsystems and starting the main loop.
 - `src/discovery.*`: SSDP presence broadcasting and unique lamp ID generation from efuse MAC.
 - `src/light_control.*`: PWM dimming, gamma correction, button debouncing, and radio toggle logic.
-- `src/matter_handler.*`: Matter protocol implementation for smart home integration.
 - `src/mqtt_handler.*`: MQTT client setup, state publishing, and Home Assistant discovery.
+- **Removed**: Matter protocol implementation (no longer included).
 - `src/web_server.*`: Embedded HTTP server with LittleFS storage and fallback AP mode handling.
 - `include/`: Shared headers for project-wide constants and declarations.
 

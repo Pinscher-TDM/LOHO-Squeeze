@@ -21,12 +21,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
     if (String(topic) == setTopic) {
         ledOn = msg.equalsIgnoreCase("ON");
-        applyPWM(true, true);
+        applyPWM(true);
         saveSettings();
     } else if (String(topic) == briTopic) {
         currentPWM = constrain(msg.toInt(), settings.minBrightness, settings.maxBrightness);
         ledOn = true;
-        applyPWM(true, true);
+        applyPWM(true);
         saveSettings();
     }
 }
@@ -75,8 +75,7 @@ void publishMQTTState() {
     mqttClient.publish((settings.mqttTopicBase + "/brightness/state").c_str(), String(currentPWM).c_str(), true);
 }
 
-// MQTT Broker Client stack lifecycle - MQTT without the web server. Matter
-// stays off because setupMatter() no-ops when settings.matterEnabled is false.
+// MQTT Broker Client stack lifecycle - MQTT without the web server.
 static bool mqttStackActive = false;
 
 void initMQTTBrokerClient() {
@@ -102,6 +101,11 @@ void handleMQTTBrokerClient() {
     handleMQTT();
 }
 
+void mqtt_handle() {
+    // Process MQTT messages for all stacks (web server, homespan, knx)
+    mqttClient.loop();
+}
+
 void publishHADiscovery() {
     if (!settings.mqttEnabled || !mqttClient.connected()) return;
 
@@ -120,4 +124,24 @@ void publishHADiscovery() {
     String payload;
     serializeJson(doc, payload);
     mqttClient.publish(("homeassistant/light/" + mqttClientId + "/config").c_str(), payload.c_str(), true);
+}
+
+// Shared MQTT publish/subscribe API for homespan and KNX handlers
+static void (*mqttSubCallback)(char*, unsigned int) = nullptr;  // static callback pointer
+
+void mqtt_publish(const char* topic, const char* payload) {
+    if (!settings.mqttEnabled || !mqttClient.connected()) return;
+    mqttClient.publish(topic, payload, true);
+}
+
+void mqtt_subscribe(const char* topic, void (*callback)(char*, unsigned int)) {
+    if (!settings.mqttEnabled) return;
+    mqttClient.subscribe(topic);
+    // Store the callback for later use (PubSubClient will invoke it)
+    mqttSubCallback = callback;
+}
+
+void mqtt_unsubscribe(const char* topic) {
+    if (!settings.mqttEnabled) return;
+    mqttClient.unsubscribe(topic);
 }

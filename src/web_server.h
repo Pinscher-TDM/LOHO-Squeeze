@@ -1,7 +1,13 @@
 #ifndef WEB_SERVER_H
 #define WEB_SERVER_H
 
-// Web Server + Matter Stack functions
+#include "homespan_handler.h"
+#include "knx_handler.h"
+
+// HomeSpan initialization (called from web server when WiFi connects)
+void initHomeSpan();
+
+// Web Server Stack functions
 void setupWiFi();
 void initWebServer();
 void shutdownWebServer();

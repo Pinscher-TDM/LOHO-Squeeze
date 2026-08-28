@@ -4,11 +4,7 @@
 #include "connection_stack_manager.h"
 #include "web_server.h"
 #include "mqtt_handler.h"
-#include "matter_handler.h"
 #include <Arduino.h>
-
-bool ledOn = false;
-int currentPWM = 128;
 bool dimDirectionUp = true;
 
 static bool lastBtnState = LOW;
@@ -34,20 +30,11 @@ void initLightControl() {
     // BUG FIX: the LEDC channel was never attached to the pin anywhere in
     // the project, so ledcWrite() had nothing to actually drive. This is
     // the one-time setup call that was missing.
-    ledcAttach(LED_PIN, PWM_FREQ, PWM_RES);
-
-    ledOn = settings.ledOn;
-    currentPWM = settings.lastPWM;
-
-    // BUG FIX: the saved on/off + brightness state was loaded into
-    // variables but never actually applied to the LED at boot.
-    applyPWM(false, false);
+    ledcAttachPin(LED_PIN, PWM_RES);  // attach once with resolution
 }
-
-// BUG FIX: original logic only ran the ledcWrite when the light was OFF
 // (and wrote the raw brightness, not 0), and did nothing at all when the
 // light was ON. This restores the correct on/off + gamma-corrected duty.
-void applyPWM(bool publish, bool updateMatter) {
+void applyPWM(bool publish) {
     if (!ledOn) {
         ledcWrite(LED_PIN, 0);
     } else {
@@ -57,9 +44,6 @@ void applyPWM(bool publish, bool updateMatter) {
 
     if (publish) {
         publishMQTTState();
-    }
-    if (updateMatter) {
-        syncMatterState();
     }
 }
 
@@ -75,7 +59,7 @@ void blinkConfirm(int times, int gapMs) {
         delay(gapMs);
     }
     // Restore the LED to its actual state after the confirmation blink.
-    applyPWM(false, false);
+    applyPWM(false);
 }
 
 void toggleWiFiRadio() {
@@ -110,7 +94,7 @@ void handleButton() {
                     saveSettings();
                 } else if (!holdHandled) {
                     ledOn = !ledOn;
-                    applyPWM(true, true);
+                    applyPWM(true);
                     saveSettings();
 
                     unsigned long now = millis();
@@ -149,7 +133,7 @@ void handleButton() {
                     if (currentPWM > settings.minBrightness) currentPWM--;
                     if (currentPWM < settings.minBrightness) currentPWM = settings.minBrightness;
                 }
-                applyPWM(true, true);
+                applyPWM(true);
             }
         }
     }

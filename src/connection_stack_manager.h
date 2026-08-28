@@ -4,12 +4,14 @@
 #include <Arduino.h>
 
 // Connection stack types - only one can be active at a time:
-//   WEB_SERVER: Web server + Matter (shares WiFi)
+//   WEB_SERVER: Web server (shares WiFi)
+//   HOMESPAN:   HomeSpan via MQTT
 //   KNX:        KNX IP interface
 //   MQTT_ONLY:  MQTT broker client only
 enum class ConnectionState : uint8_t {
     NONE = 0,
     WEB_SERVER,
+    HOMESPAN,
     KNX,
     MQTT_ONLY
 };

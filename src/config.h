@@ -32,14 +32,18 @@ struct AppSettings {
     String mqttUser = "";
     String mqttPass = "";
     String mqttTopicBase = "Squeeze/led";
-    
-    bool matterEnabled = true;
+
+    bool homespanEnabled = false;
+    String homespanDeviceId = "";
+
+    bool knxEnabled = false;
     bool wifiRadioOff = false;
     int lastPWM = 128;
-    bool ledOn = false;
 };
 
 extern AppSettings settings;
+extern bool ledOn;           // LED on/off state (defined in main.cpp)
+extern int currentPWM;       // Current PWM brightness value 0-255 (defined in main.cpp)
 
 void loadSettings();
 void saveSettings();

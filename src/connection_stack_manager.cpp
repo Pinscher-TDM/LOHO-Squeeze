@@ -28,7 +28,9 @@ bool ConnectionStackManager::isAnyStackActive() {
 const char* ConnectionStackManager::getConnectionStateString(ConnectionState state) {
     switch (state) {
         case ConnectionState::WEB_SERVER:
-            return "Web Server + Matter";
+            return "Web Server";
+        case ConnectionState::HOMESPAN:
+            return "HomeSpan";
         case ConnectionState::KNX:
             return "KNX IP Interface";
         case ConnectionState::MQTT_ONLY:
@@ -42,10 +44,17 @@ void ConnectionStackManager::startConfiguredStack() {
     if (isAnyStackActive() || settings.wifiRadioOff) return;
 
     ConnectionState state = ConnectionState::NONE;
-    if (settings.matterEnabled && !settings.mqttEnabled) {
-        state = ConnectionState::WEB_SERVER;
-    } else if (settings.mqttEnabled && !settings.matterEnabled) {
+    if (settings.knxEnabled && !settings.mqttEnabled) {
+        state = ConnectionState::KNX;
+    } else if (settings.homespanEnabled) {
+        // HomeSpan uses MQTT, so require MQTT to be enabled
+        if (!settings.mqttEnabled) return;  // invalid config - ignore
+        state = ConnectionState::HOMESPAN;
+    } else if (settings.mqttEnabled && !settings.knxEnabled) {
+        // MQTT is enabled but KNX isn't - use plain broker client
         state = ConnectionState::MQTT_ONLY;
+    } else {
+        state = ConnectionState::WEB_SERVER;
     }
     if (state == ConnectionState::NONE) return;
 
@@ -54,6 +63,8 @@ void ConnectionStackManager::startConfiguredStack() {
 
     if (state == ConnectionState::WEB_SERVER) {
         initWebServer();
+    } else if (state == ConnectionState::HOMESPAN) {
+        initHomeSpan();
     } else {
         initMQTTBrokerClient();
     }
