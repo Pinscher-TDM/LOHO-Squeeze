@@ -85,7 +85,10 @@ void setup() {
         Serial.print("Connecting to ");
         Serial.println(settings.ssid);
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
-        
+        // C3 PCB-antenna fix: full TX power distorts the signal on many
+        // boards - cap it (must run after the radio starts).
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);
+
         while (WiFi.status() != WL_CONNECTED) {
             delay(500);
             Serial.print(".");

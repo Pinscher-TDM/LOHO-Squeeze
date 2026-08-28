@@ -36,6 +36,11 @@ void setupWiFi() {
         WiFi.mode(WIFI_STA);
         WiFi.setHostname(DEVICE_HOSTNAME);
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
+        // Many ESP32-C3 boards have a poorly matched PCB antenna that
+        // distorts the signal at full TX power, making Wi-Fi unreliable or
+        // invisible. Capping to 8.5 dBm is the standard fix. Must be called
+        // after the radio is started (begin/softAP).
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
         unsigned long start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) delay(500);
@@ -49,6 +54,7 @@ void setupWiFi() {
     } else {
         WiFi.mode(WIFI_AP);
         bool apOk = WiFi.softAP("LOHO-Squeeze");
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);  // see comment above - C3 antenna fix
         Serial.printf("[WEB] Fallback AP 'LOHO-Squeeze' %s, IP: %s\n",
                       apOk ? "started" : "FAILED TO START",
                       WiFi.softAPIP().toString().c_str());
@@ -81,6 +87,7 @@ static void checkBackgroundReconnect() {
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // see comment above - C3 antenna fix
 }
 
 // Web Server route registration - idempotent, safe to call multiple times
