@@ -5,6 +5,21 @@
 #include "web_server.h"
 #include "mqtt_handler.h"
 #include <Arduino.h>
+
+// Arduino-ESP32 3.x uses a pin-based LEDC API; 2.x is channel-based. These
+// wrappers let the same code build and run on both cores.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+static void pwmAttach() { ledcAttach(LED_PIN, PWM_FREQ, PWM_RES); }
+static void pwmWrite(uint32_t duty) { ledcWrite(LED_PIN, duty); }
+#else
+#define PWM_CHANNEL 0
+static void pwmAttach() {
+    ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RES);
+    ledcAttachPin(LED_PIN, PWM_CHANNEL);
+}
+static void pwmWrite(uint32_t duty) { ledcWrite(PWM_CHANNEL, duty); }
+#endif
+
 bool dimDirectionUp = true;
 
 static bool lastBtnState = LOW;
@@ -30,16 +45,16 @@ void initLightControl() {
     // BUG FIX: the LEDC channel was never attached to the pin anywhere in
     // the project, so ledcWrite() had nothing to actually drive. This is
     // the one-time setup call that was missing.
-    ledcAttach(LED_PIN, PWM_FREQ, PWM_RES);  // attach once with frequency + resolution
+    pwmAttach();  // attach once with frequency + resolution
 }
 // (and wrote the raw brightness, not 0), and did nothing at all when the
 // light was ON. This restores the correct on/off + gamma-corrected duty.
 void applyPWM(bool publish) {
     if (!ledOn) {
-        ledcWrite(LED_PIN, 0);
+        pwmWrite(0);
     } else {
         currentPWM = constrain(currentPWM, settings.minBrightness, settings.maxBrightness);
-        ledcWrite(LED_PIN, gammaCorrect((uint8_t)currentPWM));
+        pwmWrite(gammaCorrect((uint8_t)currentPWM));
     }
 
     if (publish) {
@@ -53,9 +68,9 @@ void blinkConfirm(int times, int gapMs) {
     // actually only ~25% duty. Use the real max duty for the confirm blink.
     const uint32_t fullDuty = (1UL << PWM_RES) - 1;
     for (int i = 0; i < times; i++) {
-        ledcWrite(LED_PIN, fullDuty);
+        pwmWrite(fullDuty);
         delay(gapMs);
-        ledcWrite(LED_PIN, 0);
+        pwmWrite(0);
         delay(gapMs);
     }
     // Restore the LED to its actual state after the confirmation blink.
