@@ -17,6 +17,12 @@ bool ledOn = false;           // LED on/off state (defined in main.cpp)
 int currentPWM = settings.lastPWM;  // Current PWM brightness value 0-255
 
 void loadSettings() {
+    // On a fresh/erased flash the "dimmer" namespace doesn't exist yet, and a
+    // read-only open logs "nvs_open failed: NOT_FOUND". Opening read-write
+    // once creates the namespace so the read-only open below always succeeds.
+    prefs.begin("dimmer", false);
+    prefs.end();
+
     prefs.begin("dimmer", true);
     settings.ssid = prefs.getString("ssid", "");
     settings.password = prefs.getString("pass", "");

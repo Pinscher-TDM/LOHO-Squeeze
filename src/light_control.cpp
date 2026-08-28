@@ -30,7 +30,7 @@ void initLightControl() {
     // BUG FIX: the LEDC channel was never attached to the pin anywhere in
     // the project, so ledcWrite() had nothing to actually drive. This is
     // the one-time setup call that was missing.
-    ledcAttachPin(LED_PIN, PWM_RES);  // attach once with resolution
+    ledcAttach(LED_PIN, PWM_FREQ, PWM_RES);  // attach once with frequency + resolution
 }
 // (and wrote the raw brightness, not 0), and did nothing at all when the
 // light was ON. This restores the correct on/off + gamma-corrected duty.
