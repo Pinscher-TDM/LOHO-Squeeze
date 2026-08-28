@@ -14,8 +14,24 @@ static bool apMode = false;
 static bool serverStarted = false;      // BUG FIX: guards against double-registering routes
 static unsigned long lastWifiRetry = 0;
 
+// Diagnostic: log Wi-Fi lifecycle events so AP drops / client joins are
+// visible on the serial monitor with a reason.
+static void onWiFiEvent(WiFiEvent_t event) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_AP_START:           Serial.println("[WiFi] AP started"); break;
+        case ARDUINO_EVENT_WIFI_AP_STOP:            Serial.println("[WiFi] AP stopped"); break;
+        case ARDUINO_EVENT_WIFI_AP_STACONNECTED:    Serial.println("[WiFi] client connected to AP"); break;
+        case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED: Serial.println("[WiFi] client left AP"); break;
+        case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:   Serial.println("[WiFi] client got IP"); break;
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:      Serial.println("[WiFi] STA connected"); break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:   Serial.println("[WiFi] STA disconnected"); break;
+        default: Serial.printf("[WiFi] event %d\n", (int)event); break;
+    }
+}
+
 // WiFi setup - shared by web server stack
 void setupWiFi() {
+    WiFi.onEvent(onWiFiEvent);
     if (settings.ssid.length() > 0) {
         WiFi.mode(WIFI_STA);
         WiFi.setHostname(DEVICE_HOSTNAME);
