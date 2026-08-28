@@ -1,6 +1,6 @@
 # LOHO Squeeze
 
-A robust IoT light control solution built on an ESP32-C3, featuring MQTT connectivity and a web interface with custom styling.
+A robust IoT light control solution built on an ESP32-C3, featuring MQTT connectivity, HomeSpan/KNX smart home integration, and a styled web interface.
 
 ## Features
 
@@ -8,9 +8,19 @@ A robust IoT light control solution built on an ESP32-C3, featuring MQTT connect
 - **SSDP Discovery**: Announces device presence via SSDP multicast (224.0.0.251:1900) after WiFi connects and MDNS is initialized; unique lamp ID derived from ESP32-C3 efuse MAC address.
 - **MQTT Integration**: Publishes state to MQTT topics and supports remote on/off/brightness commands; includes Home Assistant discovery payloads.
 
+### HomeSpan Integration
+- Integrates with HomeSpan (https://github.com/home-span-project/HomeSpan) for smart home control via HomeKit.
+- Publishes state to `hs/<device_id>/light` and subscribes to `hs/+/light/set` for on/off/brightness commands.
+- Works alongside MQTT; both use the same underlying broker client.
+
 ### Web Interface
 - Serves a styled dashboard from `/data` directory (`index.html`, `settings.html`, `style.css`) via embedded HTTP server using LittleFS for persistent storage.
 - Includes fallback AP mode with background reconnection logic to restore normal Wi-Fi when available.
+
+### KNX Integration
+- Communicates with KNX bus systems via IP interface using MQTT as transport.
+- Publishes state reports to `knx/<group>/1/0/state` and subscribes to ON/OFF command topics (`knx/<group>/<onoff>/0/on`).
+- Configurable topic base in settings; works alongside HomeSpan and MQTT stacks.
 
 ### Light Control
 - PWM-based dimming with gamma correction for perceptually linear brightness control.
@@ -98,6 +108,8 @@ The project is configured for the `esp32c3` environment with required libraries 
 - `src/discovery.*`: SSDP presence broadcasting and unique lamp ID generation from efuse MAC.
 - `src/light_control.*`: PWM dimming, gamma correction, button debouncing, and radio toggle logic.
 - `src/mqtt_handler.*`: MQTT client setup, state publishing, and Home Assistant discovery.
+
+- `src/knx_handler.*`: KNX IP interface for integration with KNX bus systems; publishes state to KNX topics and supports remote on/off/brightness commands via KNX.
 - **Removed**: Matter protocol implementation (no longer included).
 - `src/web_server.*`: Embedded HTTP server with LittleFS storage and fallback AP mode handling.
 - `include/`: Shared headers for project-wide constants and declarations.
