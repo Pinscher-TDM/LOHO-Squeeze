@@ -27,11 +27,15 @@ void setupWiFi() {
 
     if (WiFi.status() == WL_CONNECTED) {
         apMode = false;
+        Serial.printf("[WEB] Wi-Fi connected, IP: %s\n", WiFi.localIP().toString().c_str());
         MDNS.begin(DEVICE_HOSTNAME);
         initHomeSpan();
     } else {
         WiFi.mode(WIFI_AP);
-        WiFi.softAP("LOHO-Squeeze");
+        bool apOk = WiFi.softAP("LOHO-Squeeze");
+        Serial.printf("[WEB] Fallback AP 'LOHO-Squeeze' %s, IP: %s\n",
+                      apOk ? "started" : "FAILED TO START",
+                      WiFi.softAPIP().toString().c_str());
         apMode = true;
         dnsServer.start(53, "*", WiFi.softAPIP());
     }
