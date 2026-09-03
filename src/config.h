@@ -10,7 +10,7 @@
 
 #define PWM_FREQ      20000
 #define PWM_RES       10
-#define GAMMA         2.2
+#define GAMMA         2.8
 
 #define DEBOUNCE_MS       50
 #define HOLD_MS          400
