@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 
 static const char* USER_AGENT = "LOHO-Squeeze-OTA";
+std::vector<GitHubRelease> cachedReleases;
 
 bool fetchGitHubReleases(std::vector<GitHubRelease>& out, String& errorOut) {
     out.clear();

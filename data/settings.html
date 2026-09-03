@@ -7,8 +7,8 @@
 
     <title>LohoSqueeze — Settings</title>
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="stylesheet" type="text/css" href="/style.css">
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" type="text/css" href="./style.css">
 </head>
 
 
@@ -47,6 +47,67 @@
 
     </section>
 
+
+    <!-- ================================================================
+         DEVICE / PAIRING
+         ================================================================ -->
+
+    <section class="settings-section">
+
+        <div class="section-label">
+            <span>00</span>
+            DEVICE
+        </div>
+
+        <div class="form-group">
+
+            <label>
+                DEVICE NAME
+            </label>
+
+            <div id="device-hostname" class="device-value">
+                Detecting device...
+            </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+            <label>
+                LOCAL ADDRESS
+            </label>
+
+            <div id="device-address" class="device-value">
+                Detecting...
+            </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+            <label>
+                DEVICE ID
+            </label>
+
+            <div id="device-mac" class="device-value">
+                Detecting...
+            </div>
+
+        </div>
+
+
+        <div id="pairing-status" class="update-status">
+            Pairing device...
+        </div>
+
+    </section>
+
+
+    <!-- ================================================================
+         SETTINGS FORM
+         ================================================================ -->
 
     <form action="/save" method="POST">
 
@@ -91,7 +152,6 @@
             </div>
 
         </section>
-
 
 
         <section class="settings-section">
@@ -153,7 +213,6 @@
         </section>
 
 
-
         <section class="form-actions">
 
             <input
@@ -176,9 +235,14 @@
                 UPDATE
             </div>
 
-            <p class="update-status">Check for new firmware releases.</p>
+            <p class="update-status">
+                Check for new firmware releases.
+            </p>
 
-            <a href="/update" class="btn btn-primary update-btn">
+            <a
+                href="/update"
+                class="btn btn-primary update-btn"
+            >
                 Check for updates
             </a>
 
@@ -207,6 +271,7 @@
 
     </div>
 
+
     <div class="footer-bottom">
         <span>LohoSqueeze</span>
         <span>© 2026</span>
@@ -217,19 +282,259 @@
 
 <script>
 
-fetch('/api/settings')
-    .then(r => r.json())
-    .then(data => {
+/* ================================================================
+   Known devices
+   ================================================================ */
 
-        document.getElementById('ssid').value = data.ssid;
-        document.getElementById('minB').value = data.minB;
-        document.getElementById('maxB').value = data.maxB;
-        document.getElementById('speed').value = data.speed;
+const KNOWN_DEVICES_KEY = "lohoSqueezeKnownDevices";
 
-    });
+
+function getKnownDevices() {
+
+    try {
+
+        const devices =
+            JSON.parse(
+                localStorage.getItem(KNOWN_DEVICES_KEY) || "[]"
+            );
+
+        return Array.isArray(devices)
+            ? devices
+            : [];
+
+    } catch (error) {
+
+        console.error(
+            "Could not read known devices:",
+            error
+        );
+
+        return [];
+    }
+}
+
+
+function saveKnownDevice(device) {
+
+    const devices =
+        getKnownDevices();
+
+    // Use MAC as the permanent device identifier.
+    const existingIndex =
+        devices.findIndex(
+            item => item.mac === device.mac
+        );
+
+
+    if (existingIndex >= 0) {
+
+        devices[existingIndex] = {
+            ...devices[existingIndex],
+            ...device
+        };
+
+    } else {
+
+        devices.push(device);
+    }
+
+
+    localStorage.setItem(
+        KNOWN_DEVICES_KEY,
+        JSON.stringify(devices)
+    );
+
+
+    console.log(
+        "[PAIRING] Known devices:",
+        devices
+    );
+}
+
+
+/* ================================================================
+   Device discovery / pairing
+   ================================================================ */
+
+async function discoverDevice() {
+
+    const hostnameElement =
+        document.getElementById("device-hostname");
+
+    const addressElement =
+        document.getElementById("device-address");
+
+    const macElement =
+        document.getElementById("device-mac");
+
+    const statusElement =
+        document.getElementById("pairing-status");
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/info",
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+        }
+
+
+        const device =
+            await response.json();
+
+
+        console.log(
+            "[PAIRING] Device info:",
+            device
+        );
+
+
+        hostnameElement.textContent =
+            device.hostname + ".local";
+
+
+        addressElement.textContent =
+            device.address;
+
+
+        macElement.textContent =
+            device.mac;
+
+
+        // ------------------------------------------------------------
+        // Register device in localStorage.
+        // ------------------------------------------------------------
+
+        saveKnownDevice({
+
+            id: device.mac,
+
+            mac: device.mac,
+
+            hostname: device.hostname,
+
+            address: device.address,
+
+            label: device.label || "LohoSqueeze",
+
+            addedAt:
+                new Date().toISOString(),
+
+            lastSeen:
+                new Date().toISOString()
+        });
+
+
+        statusElement.textContent =
+            "Device paired successfully.";
+
+
+    } catch (error) {
+
+        console.error(
+            "[PAIRING] Device discovery failed:",
+            error
+        );
+
+
+        hostnameElement.textContent =
+            "Unavailable";
+
+
+        addressElement.textContent =
+            "Unavailable";
+
+
+        macElement.textContent =
+            "Unavailable";
+
+
+        statusElement.textContent =
+            "Could not read device information.";
+    }
+}
+
+
+/* ================================================================
+   Load Wi-Fi / dimming settings
+   ================================================================ */
+
+async function loadSettings() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/settings",
+                {
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+        }
+
+
+        const data =
+            await response.json();
+
+
+        document.getElementById("ssid").value =
+            data.ssid || "";
+
+
+        document.getElementById("minB").value =
+            data.minB;
+
+
+        document.getElementById("maxB").value =
+            data.maxB;
+
+
+        document.getElementById("speed").value =
+            data.speed;
+
+
+    } catch (error) {
+
+        console.error(
+            "Could not load settings:",
+            error
+        );
+    }
+}
+
+
+/* ================================================================
+   Startup
+   ================================================================ */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        discoverDevice();
+
+        loadSettings();
+
+    }
+);
 
 </script>
 
 </body>
 </html>
-```

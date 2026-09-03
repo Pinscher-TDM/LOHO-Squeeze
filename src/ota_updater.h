@@ -17,6 +17,9 @@ struct GitHubRelease {
     size_t assetSize = 0; // bytes, 0 if unknown
 };
 
+// Expose the shared release cache definition
+extern std::vector<GitHubRelease> cachedReleases;
+
 // Fetches the list of releases from the GitHub Releases API (newest first,
 // same order as the releases page). Only releases with a .bin asset
 // attached can actually be installed - assetUrl is empty for the rest.
