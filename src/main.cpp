@@ -28,6 +28,7 @@ void loadSettings() {
     settings.dimSpeed = prefs.getInt("speed", 15);
     settings.lastPWM = prefs.getInt("lastPwm", 128);
     settings.wifiRadioOff = prefs.getBool("wifiOff", false);
+    settings.partyMode = prefs.getBool("partyMode", false);
 
     // Brightness + on/off memory - restore exactly how the light was left.
     ledOn = prefs.getBool("ledOn", false);
@@ -45,6 +46,7 @@ void saveSettings() {
     prefs.putInt("lastPwm", currentPWM);
     prefs.putBool("ledOn", ledOn);
     prefs.putBool("wifiOff", settings.wifiRadioOff);
+    prefs.putBool("partyMode", settings.partyMode);
     prefs.end();
 }
 

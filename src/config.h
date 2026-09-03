@@ -16,13 +16,15 @@
 #define HOLD_MS          400
 #define RAPID_PRESS_COUNT       10
 #define RAPID_PRESS_WINDOW_MS  3000
+#define RAPID_TOGGLE_OFF_COUNT  3
 #define WIFI_RETRY_INTERVAL_MS 30000
 
 // Settings persisted in NVS (Preferences). This is deliberately barebones:
 // only Wi-Fi + dimming + brightness memory. When a connection stack
 // (MQTT / HomeSpan / KNX) is reintroduced, add its settings fields here,
-// plus load/save lines in main.cpp's loadSettings()/saveSettings(), plus
-// form fields in data/settings.html.
+// plus load/save lines in main.cpp's loadSettings()/saveSettings(),
+// plus form fields in data/settings.html.
+// Rapid toggle: 10 presses within 3s turns wifi off; another 10 re-enables it.
 struct AppSettings {
     String ssid = "";
     String password = "";
@@ -33,6 +35,7 @@ struct AppSettings {
     int lastPWM = 128;      // brightness memory - restored on boot
 
     bool wifiRadioOff = false;
+    bool partyMode = false; // strobe at 130 BPM when enabled
 };
 
 extern AppSettings settings;

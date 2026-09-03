@@ -94,7 +94,163 @@ a:hover {
     background-color: #ff6446;
 
 }
+    /* =========================================================
+       DEVICE LIST
+       ========================================================= */
 
+    #deviceSection {
+        display: none;
+        margin-bottom: 24px;
+    }
+
+    #deviceSection.visible {
+        display: block;
+    }
+
+    .device-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .device-title {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.65;
+    }
+
+    .device-refresh {
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
+        opacity: 0.6;
+        padding: 4px 8px;
+    }
+
+    .device-refresh:hover {
+        opacity: 1;
+    }
+
+    #deviceList {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .device-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+
+        width: 100%;
+        padding: 12px 14px;
+
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 10px;
+
+        background: transparent;
+        cursor: pointer;
+
+        text-align: left;
+
+        transition:
+            background 0.15s ease,
+            border-color 0.15s ease,
+            opacity 0.15s ease;
+    }
+
+    .device-item:hover {
+        background: rgba(0, 0, 0, 0.04);
+    }
+
+    .device-item.selected {
+        border-color: currentColor;
+    }
+
+    .device-item.offline {
+        opacity: 0.45;
+    }
+
+    .device-info {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .device-name {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .device-address {
+        font-size: 11px;
+        opacity: 0.55;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .device-status {
+        flex-shrink: 0;
+
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .device-status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .device-item.offline .device-status-dot {
+        opacity: 0.5;
+    }
+
+    .no-devices {
+        font-size: 12px;
+        opacity: 0.5;
+        padding: 12px 0;
+    }
+
+    /* =========================================================
+       AP MODE
+       ========================================================= */
+
+    body.ap-mode #deviceSection {
+        display: none !important;
+    }
+
+    /* =========================================================
+       CURRENT DEVICE INDICATOR
+       ========================================================= */
+
+    #currentDeviceInfo {
+        display: none;
+        margin-bottom: 18px;
+        font-size: 11px;
+        opacity: 0.5;
+    }
+
+    #currentDeviceInfo.visible {
+        display: block;
+    }
 
 /* =========================================================
    LOGO

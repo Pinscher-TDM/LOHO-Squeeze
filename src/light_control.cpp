@@ -91,7 +91,7 @@ void blinkConfirm(int times, int gapMs) {
 
 void toggleWiFiRadio() {
     if (settings.wifiRadioOff) {
-        blinkConfirm(2, 150);
+        blinkConfirm(2, 500);
         settings.wifiRadioOff = false;
         saveSettings();
         // If the radio was off at boot, no connection stack was started at
