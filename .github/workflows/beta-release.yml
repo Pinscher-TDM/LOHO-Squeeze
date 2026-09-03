@@ -152,7 +152,6 @@ jobs:
 
           REQUIRED_FILES=(
             "firmware.bin"
-            "firmware.factory.bin"
             "littlefs.bin"
             "bootloader.bin"
             "partitions.bin"
@@ -166,6 +165,42 @@ jobs:
 
             echo "Found $FILE ($(stat -c%s "$BUILD_DIR/$FILE") bytes)"
           done
+
+      # ------------------------------------------------------------
+      # Create factory image if missing
+      # ------------------------------------------------------------
+      - name: Create factory image
+        shell: bash
+        run: |
+          set -e
+          
+          BUILD_DIR=".pio/build/esp32c3"
+          
+          # Install esptool (already installed with PlatformIO, but ensure it's available)
+          pip install esptool
+          
+          # Check if factory binary exists
+          if [ ! -f "$BUILD_DIR/firmware.factory.bin" ]; then
+            echo "firmware.factory.bin not found - creating manually..."
+            
+            # Merge binaries to create factory image
+            # Using standard ESP32-C3 addresses
+            # bootloader: 0x0
+            # partitions: 0x8000
+            # firmware:   0x10000
+            esptool.py --chip esp32c3 merge_bin \
+              -o "$BUILD_DIR/firmware.factory.bin" \
+              --flash_mode dio \
+              --flash_freq 80m \
+              --flash_size 4MB \
+              0x0 "$BUILD_DIR/bootloader.bin" \
+              0x8000 "$BUILD_DIR/partitions.bin" \
+              0x10000 "$BUILD_DIR/firmware.bin"
+            
+            echo "Created firmware.factory.bin ($(stat -c%s "$BUILD_DIR/firmware.factory.bin") bytes)"
+          else
+            echo "firmware.factory.bin already exists, using it."
+          fi
 
       # ------------------------------------------------------------
       # Prepare release files
@@ -382,4 +417,3 @@ jobs:
             ```text
             factory.bin  →  0x000000
             littlefs.bin  → 0x290000
-            ```
