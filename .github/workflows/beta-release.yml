@@ -1,11 +1,16 @@
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Beta version (e.g. v1.2.0-beta.1)"
+      bump:
+        description: "Start a new beta series? 'none' just increments the beta number on top of the last beta tag."
         required: true
-        type: string
-        default: "v1.0.0-beta.1"
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: "none"
 
       prerelease:
         description: "Mark as GitHub pre-release"
@@ -31,23 +36,74 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------------
-      # Validate version
+      # Compute next beta version automatically
       # ------------------------------------------------------------
-      - name: Validate beta version
+      - name: Compute beta version
         id: version
         shell: bash
         run: |
-          VERSION="${{ inputs.version }}"
+          set -e
 
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
-            echo "ERROR: Invalid beta version:"
-            echo "$VERSION"
-            echo
-            echo "Expected format:"
-            echo "v1.2.0-beta.1"
+          BUMP="${{ inputs.bump }}"
+
+          git fetch --tags --force
+
+          # Latest existing beta tag (any base version), e.g. v1.2.0-beta.3
+          LATEST_BETA_TAG=$(git tag --list 'v*-beta.*' | sort -V | tail -n1 || true)
+
+          # Latest stable (non-beta) tag, e.g. v1.2.0
+          LATEST_STABLE_TAG=$(git tag --list 'v*' | grep -vE -- '-beta\.' | sort -V | tail -n1 || true)
+
+          echo "Latest beta tag:   ${LATEST_BETA_TAG:-none}"
+          echo "Latest stable tag: ${LATEST_STABLE_TAG:-none}"
+
+          bump_version() {
+            local ver="${1#v}" part="$2" major minor patch
+            IFS='.' read -r major minor patch <<< "$ver"
+            case "$part" in
+              major) major=$((major+1)); minor=0; patch=0 ;;
+              minor) minor=$((minor+1)); patch=0 ;;
+              patch) patch=$((patch+1)) ;;
+            esac
+            echo "v${major}.${minor}.${patch}"
+          }
+
+          if [[ "$BUMP" != "none" ]]; then
+            # Explicitly starting a new beta series off the latest stable
+            # release (or off the latest beta's base version if there's no
+            # stable release yet).
+            if [[ -n "$LATEST_STABLE_TAG" ]]; then
+              BASE=$(bump_version "$LATEST_STABLE_TAG" "$BUMP")
+            elif [[ -n "$LATEST_BETA_TAG" ]]; then
+              STRIPPED_BASE="${LATEST_BETA_TAG%-beta.*}"
+              BASE=$(bump_version "$STRIPPED_BASE" "$BUMP")
+            else
+              BASE="v0.1.0"
+            fi
+            BETA_NUM=1
+          else
+            # Just continue the current beta series.
+            if [[ -n "$LATEST_BETA_TAG" ]]; then
+              BASE="${LATEST_BETA_TAG%-beta.*}"
+              CURRENT_NUM="${LATEST_BETA_TAG##*-beta.}"
+              BETA_NUM=$((CURRENT_NUM + 1))
+            elif [[ -n "$LATEST_STABLE_TAG" ]]; then
+              BASE=$(bump_version "$LATEST_STABLE_TAG" "patch")
+              BETA_NUM=1
+            else
+              BASE="v0.1.0"
+              BETA_NUM=1
+            fi
+          fi
+
+          VERSION="${BASE}-beta.${BETA_NUM}"
+
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "ERROR: computed tag $VERSION already exists. Re-run with a 'bump' value to start a new series."
             exit 1
           fi
 
+          echo "Computed version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------
@@ -269,7 +325,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: "LOHO Squeeze ${{ steps.version.outputs.version }} — BETA"
 
-          prerelease: true
+          prerelease: ${{ inputs.prerelease }}
 
           generate_release_notes: true
 
@@ -327,4 +383,3 @@ jobs:
             factory.bin  →  0x000000
             littlefs.bin  → 0x290000
             ```
-````
