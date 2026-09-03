@@ -1,35 +1,220 @@
+```html
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Settings</title>
+
+    <title>LohoSqueeze — Settings</title>
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" type="text/css" href="/style.css">
 </head>
+
+
 <body>
-    <div class="card">
-        <h1>Settings</h1>
-        <form action="/save" method="POST">
-            <h2>Wi-Fi</h2>
-            <label>SSID</label><input type="text" name="ssid" id="ssid">
-            <label>Password</label><input type="password" name="password" placeholder="Leave blank to keep current password">
 
-            <h2>Dimming Limits</h2>
-            <label>Min</label><input type="number" name="minB" id="minB">
-            <label>Max</label><input type="number" name="maxB" id="maxB">
-            <label>Speed Delay (ms)</label><input type="number" name="speed" id="speed">
+<header class="site-header">
 
-            <input type="submit" class="btn" value="Save & Reboot" style="margin-top: 24px;">
-        </form>
-        <br>
-        <a href="/">BACK</a>
+    <a href="/" class="brand">
+        <span class="brand-mark">LOHO</span>
+        <span class="brand-sub">SQUEEZE</span>
+    </a>
+
+    <nav class="header-nav">
+        <a href="/">CONTROL</a>
+        <a href="/settings" class="active">SETTINGS</a>
+        <a href="/update">UPDATE</a>
+    </nav>
+
+</header>
+
+
+<main class="page">
+
+    <section class="hero hero-small">
+
+        <div class="eyebrow">CONFIGURATION</div>
+
+        <h1>
+            Device<br>
+            settings.
+        </h1>
+
+        <p class="intro">
+            Configure your LohoSqueeze controller.
+        </p>
+
+    </section>
+
+
+    <form action="/save" method="POST">
+
+
+        <section class="settings-section">
+
+            <div class="section-label">
+                <span>01</span>
+                WI-FI
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="ssid">
+                    NETWORK NAME
+                </label>
+
+                <input
+                    type="text"
+                    name="ssid"
+                    id="ssid"
+                    autocomplete="off"
+                >
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="password">
+                    PASSWORD
+                </label>
+
+                <input
+                    type="password"
+                    name="password"
+                    id="password"
+                    placeholder="Leave blank to keep current password"
+                >
+
+            </div>
+
+        </section>
+
+
+
+        <section class="settings-section">
+
+            <div class="section-label">
+                <span>02</span>
+                DIMMING
+            </div>
+
+
+            <div class="form-row">
+
+                <div class="form-group">
+
+                    <label for="minB">
+                        MINIMUM
+                    </label>
+
+                    <input
+                        type="number"
+                        name="minB"
+                        id="minB"
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label for="maxB">
+                        MAXIMUM
+                    </label>
+
+                    <input
+                        type="number"
+                        name="maxB"
+                        id="maxB"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="speed">
+                    DIMMING SPEED DELAY (MS)
+                </label>
+
+                <input
+                    type="number"
+                    name="speed"
+                    id="speed"
+                >
+
+            </div>
+
+        </section>
+
+
+
+        <section class="form-actions">
+
+            <input
+                type="submit"
+                class="btn btn-primary"
+                value="SAVE & REBOOT"
+            >
+
+            <a href="/" class="back-link">
+                ← BACK TO CONTROL
+            </a>
+
+        </section>
+
+
+    </form>
+
+</main>
+
+
+<footer class="site-footer">
+
+    <div class="footer-top">
+
+        <div class="footer-brand">
+            <div class="brand-mark">LOHO</div>
+            <div class="brand-sub">SQUEEZE</div>
+        </div>
+
+        <div class="footer-links">
+            <a href="/">Control</a>
+            <a href="/settings">Settings</a>
+            <a href="/update">Firmware</a>
+        </div>
+
     </div>
-    <script>
-        fetch('/api/settings').then(r => r.json()).then(data => {
-            document.getElementById('ssid').value = data.ssid;
-            document.getElementById('minB').value = data.minB;
-            document.getElementById('maxB').value = data.maxB;
-            document.getElementById('speed').value = data.speed;
-        });
-    </script>
+
+    <div class="footer-bottom">
+        <span>LohoSqueeze</span>
+        <span>© 2026</span>
+    </div>
+
+</footer>
+
+
+<script>
+
+fetch('/api/settings')
+    .then(r => r.json())
+    .then(data => {
+
+        document.getElementById('ssid').value = data.ssid;
+        document.getElementById('minB').value = data.minB;
+        document.getElementById('maxB').value = data.maxB;
+        document.getElementById('speed').value = data.speed;
+
+    });
+
+</script>
+
 </body>
 </html>
+```

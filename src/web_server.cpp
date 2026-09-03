@@ -89,6 +89,12 @@ static void checkBackgroundReconnect() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm);  // see comment above - C3 antenna fix
 }
 
+static void sendCaptivePortalRedirect() {
+    server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+    server.sendHeader("Connection", "close");
+    server.send(302, "text/plain", "");
+}
+
 static String readFile(const char* path) {
     File f = LittleFS.open(path, "r");
     if (!f) return "";
@@ -241,11 +247,18 @@ void initWebServerRoutes() {
         }
     });
 
+     // --- Captive portal probes -----------------------------------------
+    server.on("/generate_204", HTTP_GET, sendCaptivePortalRedirect);            // Android
+    server.on("/gen_204", HTTP_GET, sendCaptivePortalRedirect);                 // Android (older)
+    server.on("/hotspot-detect.html", HTTP_GET, sendCaptivePortalRedirect);     // iOS / macOS
+    server.on("/library/test/success.html", HTTP_GET, sendCaptivePortalRedirect); // iOS (older)
+    server.on("/ncsi.txt", HTTP_GET, sendCaptivePortalRedirect);                // Windows
+    server.on("/connecttest.txt", HTTP_GET, sendCaptivePortalRedirect);         // Windows 10+
+    server.on("/canonical.html", HTTP_GET, sendCaptivePortalRedirect);          // Firefox / some Linux
+
     server.onNotFound([]() {
         if (apMode) {
-            server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
-            server.sendHeader("Connection", "close");
-            server.send(302, "text/plain", "");
+            sendCaptivePortalRedirect();
         } else {
             server.sendHeader("Connection", "close");
             server.send(404, "text/plain", "Not found");

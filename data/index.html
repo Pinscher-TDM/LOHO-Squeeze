@@ -1,34 +1,208 @@
+```html
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LED Control</title>
-    <link rel="stylesheet" type="text/css" href="/style.css">
+    <meta name="description" content="Studio LOHO Squeeze - Minimalist smart lighting control interface">
+
+    <title><svg width="20" height="20" viewBox="0 0 48 48" fill="none"><rect x="16" y="16" width="16" height="16" rx="3.5" stroke="#ff6446" stroke-width="2.5"/><circle cx="24" cy="24" r="7.5" fill="#ff6446"/></svg>SQUEEZE — Studio LOHO</title>
+
+    <link rel="icon" type="image/svg+xml" href="./favicon.jpg">
+    <link rel="stylesheet" type="text/css" href="./style.css">
 </head>
 <body>
-    <div class="card">
-        <h1>LED Control</h1>
-        <button class="btn" onclick="fetch('/api/control?toggle=1').then(syncState)">Toggle On / Off</button>
-        <input type="range" id="dimmer" onchange="fetch('/api/control?pwm=' + this.value)">
-        <div class="status" id="status">Loading...</div>
-        <div class="status" id="btnstatus"></div>
-        <div class="links">
-            <a href="/settings">SETTINGS</a>
-            <a href="/update">UPDATE</a>
+<header class="site-header">
+    <!-- Navigation with accent color selection bar matching Studio LOHO style -->
+    <nav class="header-nav">
+        <img src="./loho-logo.svg" alt="LOHO" class="logo">
+        <a href="/" class="nav-link active">CONTROL</a>
+        <a href="/settings" class="nav-link">SETTINGS</a>
+        <a href="/update" class="nav-link">UPDATE</a>
+    </nav>
+</header>
+<main class="page">
+    <section class="control-section">
+        <div class="control-card">
+
+            <div class="control-top">
+                <div>
+                    <div class="control-description">
+                        Current State
+                    </div>
+                </div>
+                <div class="power-indicator" id="powerIndicator">
+                    OFF
+                </div>
+            </div>
+
+            <div class="brightness-value">
+                <span id="brightnessValue">0</span>
+                <span class="brightness-unit">%</span>
+            </div>
+
+            <input
+                type="range"
+                id="dimmer"
+                min="0"
+                max="254"
+                value="0"
+                aria-label="Brightness"
+            >
+
+
+            <div class="range-labels">
+                <span>MIN</span>
+                <span>MAX</span>
+            </div>
+
+
+<button class="btn btn-primary toggle-btn" id="toggleBtn" onclick="
+                fetch('/api/control?toggle=1').then(syncState)
+            ">
+                <span>Toggle light</span>
+
+    </section>
+
+
+    <section class="status-section">
+        <div class="section-label">
+            <span>02</span>
+            STATUS
         </div>
+        <div class="status-grid">
+            <div class="status-item">
+                <div class="status-label">LIGHT</div>
+                <div class="status-value" id="status">
+                    Loading...
+                </div>
+            </div>
+
+            <div class="status-item">
+                <div class="status-label">BUTTON</div>
+                <div class="status-value" id="btnstatus">
+                    —
+                </div>
+            </div>
+
+        </div>
+
+    </section>
+
+</main>
+
+
+<footer class="site-footer">
+    <!-- Footer branding with refined typography -->
+    <div class="footer-top">
+        <div class="footer-brand">
+            <svg width="24" height="24" viewBox="0 0 48 48" fill="none"><rect x="16" y="16" width="16" height="16" rx="3.5" stroke="#ff6446" stroke-width="2.5"/><circle cx="24" cy="24" r="7.5" fill="#ff6446"/></svg>
+            <div class="brand-mark">LOHO</div>
+            <div class="brand-sub">SQUEEZE</div>
+
+        <div class="footer-links">
+            <a href="/">Control</a>
+            <a href="/settings">Settings</a>
+            <a href="/update">Firmware</a>
+        </div>
+
     </div>
-    <script>
-        function syncState() {
-            fetch('/api/state').then(r => r.json()).then(data => {
-                document.getElementById('dimmer').min = data.minB;
-                document.getElementById('dimmer').max = data.maxB;
-                document.getElementById('dimmer').value = data.pwm;
-                document.getElementById('status').innerText = 'Light is currently ' + (data.ledOn ? 'ON' : 'OFF');
-                document.getElementById('btnstatus').innerText = 'Button: ' + (data.btn ? 'PRESSED' : 'released');
-            });
-        }
-        syncState();
-        setInterval(syncState, 1000);
-    </script>
+
+    <!-- Copyright line with subtle spacing -->
+    <div class="footer-bottom">
+        <span>Studio LOHO</span>
+        <span>© 2026</span>
+
+    </div>
+</footer>
+
+
+<script>
+
+let currentBrightness = 0;
+
+function updateBrightnessDisplay(value) {
+    const min = parseInt(document.getElementById('dimmer').min || 0);
+    const max = parseInt(document.getElementById('dimmer').max || 254);
+
+    let percentage = 0;
+
+    if (max > min) {
+        percentage = Math.round(
+            ((value - min) / (max - min)) * 100
+        );
+    }
+    document.getElementById('brightnessValue').innerText = percentage;
+}
+
+
+function syncState() {
+    fetch('/api/state')
+        .then(r => r.json())
+        .then(data => {
+
+            const dimmer = document.getElementById('dimmer');
+
+            dimmer.min = data.minB;
+            dimmer.max = data.maxB;
+            dimmer.value = data.pwm;
+
+            currentBrightness = data.pwm;
+
+            updateBrightnessDisplay(data.pwm);
+
+
+            const status = document.getElementById('status');
+            const indicator = document.getElementById('powerIndicator');
+
+            if (data.ledOn) {
+
+                status.innerText = 'ON';
+                indicator.innerText = 'ON';
+                indicator.classList.add('active');
+
+                document.getElementById('toggleBtn').className = 'btn toggle-btn active';
+
+            } else {
+
+                status.innerText = 'OFF';
+                indicator.innerText = 'OFF';
+                indicator.classList.remove('active');
+
+            }
+
+
+            document.getElementById('btnstatus').innerText =
+                data.btn ? 'PRESSED' : 'RELEASED';
+
+        })
+        .catch(() => {
+            document.getElementById('status').innerText =
+                'CONNECTION ERROR';
+        });
+}
+
+
+document.getElementById('dimmer').addEventListener('input', function () {
+
+    updateBrightnessDisplay(this.value);
+
+});
+
+
+document.getElementById('dimmer').addEventListener('change', function () {
+
+    fetch('/api/control?pwm=' + this.value);
+
+});
+
+
+syncState();
+
+setInterval(syncState, 1000);
+
+</script>
+
 </body>
 </html>
+```
