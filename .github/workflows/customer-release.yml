@@ -1,0 +1,390 @@
+````yaml
+name: Customer Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Customer release version (e.g. v1.2.0)"
+        required: true
+        type: string
+        default: "v1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Customer Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------------------------
+      # Validate customer version
+      # ------------------------------------------------------------
+      - name: Validate customer version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: Invalid customer release version:"
+            echo "$VERSION"
+            echo
+            echo "Expected format:"
+            echo "v1.2.3"
+            echo
+            echo "Beta versions are NOT allowed here."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # Prevent overwriting an existing tag
+      # ------------------------------------------------------------
+      - name: Check release does not already exist
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "ERROR: Tag $VERSION already exists."
+            echo
+            echo "Choose a new version."
+            exit 1
+          fi
+
+          echo "Version $VERSION is available."
+
+      # ------------------------------------------------------------
+      # Python
+      # ------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # ------------------------------------------------------------
+      # PlatformIO
+      # ------------------------------------------------------------
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      # ------------------------------------------------------------
+      # Build firmware
+      # ------------------------------------------------------------
+      - name: Build firmware
+        run: |
+          pio run --environment esp32c3
+
+      # ------------------------------------------------------------
+      # Build LittleFS from /data
+      # ------------------------------------------------------------
+      - name: Build LittleFS filesystem
+        run: |
+          pio run \
+            --environment esp32c3 \
+            --target buildfs
+
+      # ------------------------------------------------------------
+      # Verify build
+      # ------------------------------------------------------------
+      - name: Verify build files
+        shell: bash
+        run: |
+          set -e
+
+          BUILD_DIR=".pio/build/esp32c3"
+
+          REQUIRED_FILES=(
+            "firmware.bin"
+            "firmware.factory.bin"
+            "littlefs.bin"
+            "bootloader.bin"
+            "partitions.bin"
+          )
+
+          for FILE in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$BUILD_DIR/$FILE" ]; then
+              echo "ERROR: Missing $FILE"
+              exit 1
+            fi
+
+            echo "✓ $FILE ($(stat -c%s "$BUILD_DIR/$FILE") bytes)"
+          done
+
+      # ------------------------------------------------------------
+      # Prepare customer release
+      # ------------------------------------------------------------
+      - name: Prepare customer release
+        shell: bash
+        run: |
+          set -e
+
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILD_DIR=".pio/build/esp32c3"
+          RELEASE_DIR="release"
+
+          mkdir -p "$RELEASE_DIR"
+
+          cp "$BUILD_DIR/firmware.bin" \
+            "$RELEASE_DIR/loho-squeeze-${VERSION}-firmware.bin"
+
+          cp "$BUILD_DIR/firmware.factory.bin" \
+            "$RELEASE_DIR/loho-squeeze-${VERSION}-factory.bin"
+
+          cp "$BUILD_DIR/littlefs.bin" \
+            "$RELEASE_DIR/loho-squeeze-${VERSION}-littlefs.bin"
+
+          cp "$BUILD_DIR/bootloader.bin" \
+            "$RELEASE_DIR/loho-squeeze-${VERSION}-bootloader.bin"
+
+          cp "$BUILD_DIR/partitions.bin" \
+            "$RELEASE_DIR/loho-squeeze-${VERSION}-partitions.bin"
+
+          # --------------------------------------------------------
+          # Windows flashing script
+          # --------------------------------------------------------
+          cat > "$RELEASE_DIR/flash-all.bat" <<EOF
+          @echo off
+
+          echo.
+          echo LOHO Squeeze ${VERSION}
+          echo ======================
+          echo.
+          echo This will erase the ESP32-C3.
+          echo.
+          pause
+
+          esptool.py --chip esp32c3 erase_flash
+
+          esptool.py --chip esp32c3 write_flash 0x0 loho-squeeze-${VERSION}-factory.bin
+
+          esptool.py --chip esp32c3 write_flash 0x290000 loho-squeeze-${VERSION}-littlefs.bin
+
+          echo.
+          echo LOHO Squeeze ${VERSION} installed successfully.
+          pause
+          EOF
+
+          # --------------------------------------------------------
+          # Linux/macOS flashing script
+          # --------------------------------------------------------
+          cat > "$RELEASE_DIR/flash-all.sh" <<EOF
+          #!/bin/bash
+
+          set -e
+
+          echo
+          echo "LOHO Squeeze ${VERSION}"
+          echo "======================"
+          echo
+          echo "This will erase the ESP32-C3."
+          echo
+
+          read -p "Continue? [y/N] " ANSWER
+
+          if [[ "\$ANSWER" != "y" && "\$ANSWER" != "Y" ]]; then
+              exit 0
+          fi
+
+          esptool.py --chip esp32c3 erase_flash
+
+          esptool.py --chip esp32c3 write_flash \
+            0x0 loho-squeeze-${VERSION}-factory.bin
+
+          esptool.py --chip esp32c3 write_flash \
+            0x290000 loho-squeeze-${VERSION}-littlefs.bin
+
+          echo
+          echo "LOHO Squeeze ${VERSION} installed successfully."
+          EOF
+
+          chmod +x "$RELEASE_DIR/flash-all.sh"
+
+          # --------------------------------------------------------
+          # Customer README
+          # --------------------------------------------------------
+          cat > "$RELEASE_DIR/README.txt" <<EOF
+          LOHO Squeeze ${VERSION}
+          ======================
+
+          CUSTOMER RELEASE
+
+          Firmware:
+              loho-squeeze-${VERSION}-firmware.bin
+
+          Factory image:
+              loho-squeeze-${VERSION}-factory.bin
+
+          Web UI / LittleFS:
+              loho-squeeze-${VERSION}-littlefs.bin
+
+          Bootloader:
+              loho-squeeze-${VERSION}-bootloader.bin
+
+          Partition table:
+              loho-squeeze-${VERSION}-partitions.bin
+
+          The LittleFS image contains the current contents
+          of the project's /data directory.
+
+          LittleFS flash address:
+
+              0x290000
+
+          Firmware OTA:
+              firmware.bin
+
+          Complete manual installation:
+
+              factory.bin
+              +
+              littlefs.bin
+
+          WARNING:
+
+          The firmware OTA updater currently updates only the
+          application firmware. It does not update LittleFS.
+
+          If the web UI has changed, the LittleFS image must
+          also be installed.
+          EOF
+
+          # --------------------------------------------------------
+          # ZIP
+          # --------------------------------------------------------
+          cd "$RELEASE_DIR"
+          zip -r "../loho-squeeze-${VERSION}.zip" .
+          cd ..
+
+      # ------------------------------------------------------------
+      # Upload build artifact
+      # ------------------------------------------------------------
+      - name: Upload customer build
+        uses: actions/upload-artifact@v4
+        with:
+          name: loho-squeeze-${{ steps.version.outputs.version }}
+          path: |
+            release/*
+            loho-squeeze-${{ steps.version.outputs.version }}.zip
+
+      # ------------------------------------------------------------
+      # Create customer Git tag
+      # ------------------------------------------------------------
+      - name: Create Git tag
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$VERSION" \
+            -m "LOHO Squeeze $VERSION"
+
+          git push origin "$VERSION"
+
+      # ------------------------------------------------------------
+      # Create customer GitHub Release
+      # ------------------------------------------------------------
+      - name: Create Customer GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "LOHO Squeeze ${{ steps.version.outputs.version }}"
+
+          prerelease: false
+
+          generate_release_notes: true
+
+          files: |
+            release/loho-squeeze-${{ steps.version.outputs.version }}-firmware.bin
+            release/loho-squeeze-${{ steps.version.outputs.version }}-factory.bin
+            release/loho-squeeze-${{ steps.version.outputs.version }}-littlefs.bin
+            release/loho-squeeze-${{ steps.version.outputs.version }}-bootloader.bin
+            release/loho-squeeze-${{ steps.version.outputs.version }}-partitions.bin
+            release/flash-all.sh
+            release/flash-all.bat
+            release/README.txt
+            loho-squeeze-${{ steps.version.outputs.version }}.zip
+
+          body: |
+            ## LOHO Squeeze ${{ steps.version.outputs.version }}
+
+            **Stable customer release**
+
+            ### Firmware
+
+            The recommended OTA asset is:
+
+            `loho-squeeze-${{ steps.version.outputs.version }}-firmware.bin`
+
+            ### Complete installation
+
+            The release also contains the complete firmware image and
+            the LittleFS filesystem image.
+
+            | File | Description |
+            |---|---|
+            | `*-firmware.bin` | Application firmware / OTA |
+            | `*-factory.bin` | Complete ESP32-C3 factory image |
+            | `*-littlefs.bin` | **Current `/data` web UI** |
+            | `*-bootloader.bin` | Bootloader |
+            | `*-partitions.bin` | Partition table |
+
+            ### Web UI
+
+            The `*-littlefs.bin` file was generated from the current
+            repository `data/` directory during this release build.
+
+            This means the release contains the exact web UI that was
+            present in the source code when the release was created.
+
+            ### OTA
+
+            The current OTA updater updates the application firmware.
+
+            It does not automatically update LittleFS.
+
+            If the web UI has changed, the LittleFS image must also be
+            installed manually.
+
+            LittleFS address:
+
+            ```text
+            0x290000
+            ```
+
+            ### Complete manual installation
+
+            ```text
+            factory.bin  →  0x000000
+            littlefs.bin →  0x290000
+            ```
+
+            Windows users can use `flash-all.bat`.
+
+            Linux/macOS users can use `flash-all.sh`.
+
+            ### Platform
+
+            - ESP32-C3
+            - Arduino
+            - PlatformIO
+            - LittleFS
+````
