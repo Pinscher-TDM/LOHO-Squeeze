@@ -1,266 +1,320 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Studio LOHO Squeeze - lighting control interface">
-
+ 
     <title>SQUEEZE — Studio LOHO</title>
-
+ 
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" type="text/css" href="./style.css">
+
+    <!-- Dynamic Glow Styles -->
+    <style id="dynamic-glow">
+        .brightness-icon.glow-active {
+            box-shadow: 0 0 calc(10px + var(--glow-size, 0px)) calc(2px + var(--glow-spread, 0px)) #ff6446;
+            transition: box-shadow 0.15s ease-out;
+        }
+    </style>
 </head>
-
+ 
 <body>
-
+ 
 <header class="site-header">
     <nav class="header-nav">
-        <img src="./loho-logo.svg" alt="LOHO" class="logo">
-
-        <a href="/" class="nav-link active">CONTROL</a>
-        <a href="/settings" class="nav-link">SETTINGS</a>
+ 
+        <img
+            src="./loho-logo.svg"
+            alt="LOHO"
+            class="logo"
+        >
+ 
+        <a href="/" class="nav-link active">
+            CONTROL
+        </a>
+ 
+        <a href="/settings" class="nav-link">
+            SETTINGS
+        </a>
+ 
     </nav>
 </header>
-
-
+ 
+ 
 <main class="page">
-
+ 
     <section class="control-section">
-
+ 
         <div class="control-card">
+ 
+            <!-- =================================================
+                 BRIGHTNESS ICON (Now works as a interactive slider)
+                 ================================================= -->
+ 
+            <div class="brightness-icon-wrapper">
+ 
+                <div
+                    class="brightness-icon"
+                    id="brightnessIcon"
+                    style="cursor: ns-resize; touch-action: none;"
+                >
+                <div class="brightness-icon-content">
 
-            <div class="control-top">
-                <div>
-                    <div class="control-description">
-                        Current State
-                    </div>
+                    <span id="brightnessValue">
+                        0
+                    </span>
+
+                    <span class="brightness-unit">
+                        %
+                    </span>
+
                 </div>
-
-                <div class="power-indicator" id="powerIndicator">
-                    OFF
+                
+                    <div
+                        class="brightness-fill"
+                        id="brightnessFill"
+                    ></div>
+ 
                 </div>
+ 
             </div>
-
-
-            <div class="brightness-value">
-                <span id="brightnessValue">0</span>
-                <span class="brightness-unit">%</span>
-            </div>
-
-
-            <input
-                type="range"
-                id="dimmer"
-                min="0"
-                max="254"
-                value="0"
-                aria-label="Brightness"
-            >
-
-
-            <div class="range-labels">
-                <span>MIN</span>
-                <span>MAX</span>
-            </div>
-
-
+ 
+ 
+            <!-- =================================================
+                 TOGGLE BUTTON
+                 ================================================= -->
+ 
             <button
                 class="btn toggle-btn inactive"
                 id="toggleBtn"
                 onclick="fetch('/api/control?toggle=1').then(() => syncState())"
             >
-                <span class="btn text">Toggle light</span>
+                <span class="btn-text">
+                    Toggle light
+                </span>
             </button>
-
+ 
         </div>
-
+ 
     </section>
-
+ 
 </main>
-
-
+ 
+ 
 <footer class="site-footer">
-
+ 
     <div class="footer-top">
+ 
         <div class="footer-brand">
-            <img src="./loho-logo.svg" alt="LOHO" class="logo">
+ 
+            <img
+                src="./loho-logo.svg"
+                alt="LOHO"
+                class="logo"
+            >
+ 
         </div>
+ 
     </div>
-
-
+ 
+ 
     <div class="footer-bottom">
-        <span>Studio LOHO</span>
-        <span>© 2026</span>
+ 
+        <span>
+            Studio LOHO
+        </span>
+ 
+        <span>
+            © 2026
+        </span>
+ 
     </div>
-
+ 
 </footer>
-
-
+ 
+ 
 <script>
-
+ 
 let currentBrightness = 0;
-
-
-/*
- * Update brightness percentage display
- */
+let minB = 0;
+let maxB = 254;
+let isDragging = false;
+let isLedOn = false;
+ 
+ 
+/* =========================================================
+   UPDATE BRIGHTNESS DISPLAY & GLOW EFFECT
+   ========================================================= */
+ 
 function updateBrightnessDisplay(value) {
-
-    const min = parseInt(
-        document.getElementById('dimmer').min || 0
-    );
-
-    const max = parseInt(
-        document.getElementById('dimmer').max || 254
-    );
-
+ 
     let percentage = 0;
-
-    if (max > min) {
+ 
+    if (maxB > minB) {
+ 
         percentage = Math.round(
-            ((value - min) / (max - min)) * 100
+            ((Number(value) - minB) / (maxB - minB)) * 100
         );
+ 
     }
+ 
+    percentage = Math.max(0, Math.min(100, percentage));
+ 
+    document.getElementById('brightnessValue').innerText = percentage;
+    document.getElementById('brightnessFill').style.height = percentage + '%';
+ 
+    /*
+     * Update Glow Effect based on percentage and ON state
+     */
+    const icon = document.getElementById('brightnessIcon');
 
-    document.getElementById('brightnessValue').innerText =
-        percentage;
+    if (isLedOn) {
+        icon.classList.add('glow-active');
+        
+        // Scale glow blur size (0px to 40px) and spread (0px to 15px) relative to brightness %
+        const glowBlur = Math.round((percentage / 100) * 40);
+        const glowSpread = Math.round((percentage / 100) * 15);
+
+        icon.style.setProperty('--glow-size', glowBlur + 'px');
+        icon.style.setProperty('--glow-spread', glowSpread + 'px');
+    } else {
+        icon.classList.remove('glow-active');
+    }
 }
-
-
-/*
- * Synchronize the UI with the ESP32 state
- */
+ 
+ 
+/* =========================================================
+   SYNCHRONIZE UI WITH ESP32
+   ========================================================= */
+ 
 function syncState() {
-
+    if (isDragging) return; // Prevent overwriting while dragging
+ 
     fetch('/api/state')
-
+ 
         .then(response => {
-
+ 
             if (!response.ok) {
                 throw new Error('Failed to get state');
             }
-
+ 
             return response.json();
+ 
         })
-
+ 
         .then(data => {
-
-            const dimmer =
-                document.getElementById('dimmer');
-
-            const indicator =
-                document.getElementById('powerIndicator');
-
-            const toggleBtn =
-                document.getElementById('toggleBtn');
-
-
-            /*
-             * Update dimmer limits and value
-             */
-            dimmer.min = data.minB;
-            dimmer.max = data.maxB;
-            dimmer.value = data.pwm;
-
-            currentBrightness = data.pwm;
-
-            updateBrightnessDisplay(data.pwm);
-
-            /*
-             * Update light state
-             */
-            if (data.ledOn) {
-
-                /*
-                 * Light is ON
-                 */
+ 
+            const indicator = document.getElementById('powerIndicator');
+            const toggleBtn = document.getElementById('toggleBtn');
+ 
+            minB = Number(data.minB);
+            maxB = Number(data.maxB);
+            isLedOn = Boolean(data.ledOn);
+ 
+            currentBrightness = Number(data.pwm);
+            updateBrightnessDisplay(currentBrightness);
+ 
+            if (isLedOn) {
+ 
                 indicator.innerText = 'ON';
-
                 indicator.classList.add('active');
-                /*
-                 * Button uses:
-                 * .btn.toggle-btn.active
-                 */
+ 
                 toggleBtn.classList.remove('inactive');
                 toggleBtn.classList.add('active');
-
+ 
             } else {
-
-                /*
-                 * Light is OFF
-                 */
+ 
                 indicator.innerText = 'OFF';
-
                 indicator.classList.remove('active');
-                /*
-                 * Button uses:
-                 * .btn.toggle-btn.inactive
-                 */
+ 
                 toggleBtn.classList.remove('active');
                 toggleBtn.classList.add('inactive');
-
+ 
             }
-
+ 
         })
-
+ 
         .catch(error => {
+ 
+            console.error('Failed to synchronize state:', error);
+ 
+        });
+ 
+}
 
-            console.error(
-                'Failed to synchronize state:',
-                error
-            );
+ 
+/* =========================================================
+   INTERACTIVE CIRCLE SLIDER
+   ========================================================= */
 
+const icon = document.getElementById('brightnessIcon');
+
+function calculatePwmFromY(clientY) {
+    const rect = icon.getBoundingClientRect();
+    // 0 at top, 1 at bottom
+    let ratio = (clientY - rect.top) / rect.height; 
+    
+    // Clamp ratio between 0 and 1
+    ratio = Math.max(0, Math.min(1, ratio)); 
+    
+    // Invert so sliding UP increases brightness and sliding DOWN decreases
+    const invertedRatio = 1 - ratio; 
+    
+    return Math.round(minB + invertedRatio * (maxB - minB));
+}
+
+function handlePointerMove(e) {
+    if (!isDragging) return;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    currentBrightness = calculatePwmFromY(clientY);
+    updateBrightnessDisplay(currentBrightness);
+}
+
+function handlePointerStart(e) {
+    isDragging = true;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    currentBrightness = calculatePwmFromY(clientY);
+    updateBrightnessDisplay(currentBrightness);
+}
+
+function handlePointerEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+
+    // Send final updated PWM to API
+    fetch('/api/control?pwm=' + currentBrightness)
+        .then(() => syncState())
+        .catch(error => {
+            console.error('Failed to update brightness:', error);
         });
 }
 
+// Mouse events
+icon.addEventListener('mousedown', handlePointerStart);
+window.addEventListener('mousemove', handlePointerMove);
+window.addEventListener('mouseup', handlePointerEnd);
 
-/*
- * Update brightness display while moving slider
- */
-document
-    .getElementById('dimmer')
-    .addEventListener('input', function () {
+// Touch events for mobile
+icon.addEventListener('touchstart', handlePointerStart);
+window.addEventListener('touchmove', handlePointerMove);
+window.addEventListener('touchend', handlePointerEnd);
 
-        updateBrightnessDisplay(this.value);
-
-    });
-
-
-/*
- * Send brightness value when slider is released
- */
-document
-    .getElementById('dimmer')
-    .addEventListener('change', function () {
-
-        fetch('/api/control?pwm=' + this.value)
-            .then(() => syncState())
-            .catch(error => {
-
-                console.error(
-                    'Failed to update brightness:',
-                    error
-                );
-
-            });
-
-    });
-
-
-/*
- * Initial synchronization
- */
+ 
+/* =========================================================
+   INITIAL SYNCHRONIZATION
+   ========================================================= */
+ 
 syncState();
-
-
-/*
- * Keep the UI synchronized with the ESP32
- */
+ 
+ 
+/* =========================================================
+   KEEP UI SYNCHRONIZED
+   ========================================================= */
+ 
 setInterval(syncState, 1000);
-
+ 
 </script>
-
+ 
 </body>
 </html>
-```

@@ -124,6 +124,18 @@ void initWebServerRoutes() {
         server.send(200, "text/html", readFile("/settings.html"));
     });
 
+    server.on("/loho-logo.svg", HTTP_GET, []() {
+        String contents = readFile("/loho-logo.svg");
+        if (contents.isEmpty()) {
+            Serial.println("[WEB] Logo file not found in LittleFS");
+            server.send(404, "text/plain", "Logo not found");
+            return;
+        }
+        server.sendHeader("Content-Type", "image/svg+xml");
+        server.sendHeader("Connection", "close");
+        server.send(200, "image/svg+xml", contents);
+    });
+
     server.on("/update", HTTP_GET, []() {
         server.sendHeader("Connection", "close");
         server.send(200, "text/html", readFile("/update.html"));
