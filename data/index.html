@@ -2,18 +2,28 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description" content="Studio LOHO Squeeze - lighting control interface">
  
     <title>SQUEEZE — Studio LOHO</title>
  
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="./manifest.json">
+
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" type="text/css" href="./style.css">
+
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Squeeze">
+    <link rel="apple-touch-icon" href="./favicon.svg">
 
     <!-- Dynamic Glow Styles -->
     <style id="dynamic-glow">
         .brightness-icon.glow-active {
-            box-shadow: 0 0 calc(10px + var(--glow-size, 0px)) calc(2px + var(--glow-spread, 0px)) #ff6446;
+            box-shadow: 0 0 calc(10px + var(--glow-size, 0px)) calc(2px + var(--glow-spread, 0px)) rgba(255, 165, 0, 0.6);
             transition: box-shadow 0.15s ease-out;
         }
     </style>
@@ -47,7 +57,7 @@
     <section class="control-section">
  
         <div class="control-card">
- 
+
             <!-- =================================================
                  BRIGHTNESS ICON (Now works as a interactive slider)
                  ================================================= -->
@@ -98,7 +108,7 @@
         </div>
  
     </section>
- 
+
 </main>
  
  
@@ -118,7 +128,21 @@
  
     </div>
  
- 
+      <button id="pwaInstallBtn" class="btn active" style="display: none; margin-top: 1rem;">
+        <span class="btn-text">Install App</span>
+    </button>
+
+    <div id="iosInstallModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: #111; color: #fff; padding: 20px; border-radius: 12px; max-width: 300px; text-align: center; border: 1px solid #333;">
+            <h3 style="margin-top: 0;">Install Squeeze</h3>
+            <p style="font-size: 0.9rem; color: #ccc;">To install on iPhone:</p>
+            <ol style="text-align: left; font-size: 0.85rem; line-height: 1.5; padding-left: 20px; color: #aaa;">
+                <li>Tap the <strong>Share button</strong> in Safari menu.</li>
+                <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            </ol>
+            <button onclick="document.getElementById('iosInstallModal').style.display='none'" class="btn active" style="margin-top: 10px; width: 100%;">Got it</button>
+        </div>
+    </div>
     <div class="footer-bottom">
  
         <span>
@@ -128,9 +152,9 @@
         <span>
             © 2026
         </span>
- 
+        
     </div>
- 
+
 </footer>
  
  
@@ -313,7 +337,64 @@ syncState();
    ========================================================= */
  
 setInterval(syncState, 1000);
- 
+
+
+/* =========================================================
+   PWA SERVICE WORKER REGISTRATION
+   ========================================================= */
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registered:', reg.scope))
+            .catch(err => console.error('Service Worker registration failed:', err));
+    });
+}
+ /* =========================================================
+   PWA INSTALL BUTTON LOGIC
+   ========================================================= */
+
+let deferredPrompt;
+const installBtn = document.getElementById('pwaInstallBtn');
+const iosModal = document.getElementById('iosInstallModal');
+
+// Detect iOS device
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+// Detect if running already installed as a standalone PWA
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+if (!isStandalone) {
+    if (isIOS) {
+        // Show install button for iOS users to open instruction modal
+        installBtn.style.display = 'block';
+        installBtn.addEventListener('click', () => {
+            iosModal.style.display = 'flex';
+        });
+    } else {
+        // Capture Android / Desktop browser install prompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block';
+        });
+
+        installBtn.addEventListener('click', () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    installBtn.style.display = 'none';
+                }
+                deferredPrompt = null;
+            });
+        });
+    }
+}
+
+// Hide button automatically if opened as installed PWA
+window.addEventListener('appinstalled', () => {
+    installBtn.style.display = 'none';
+});
 </script>
  
 </body>

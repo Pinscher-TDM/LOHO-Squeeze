@@ -1,0 +1,16 @@
+{
+  "name": "Studio Loho",
+  "short_name": "Squeeze",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ff6446",
+  "theme_color": "#ff6446",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
