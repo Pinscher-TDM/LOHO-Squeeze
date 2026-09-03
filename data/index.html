@@ -1,111 +1,401 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LOHO-Squeeze - Multi-Device Control</title>
-    <link rel="stylesheet" type="text/css" href="/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Studio LOHO Squeeze - lighting control interface">
+ 
+    <title>SQUEEZE — Studio LOHO</title>
+ 
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="./manifest.json">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" type="text/css" href="./style.css">
+
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Squeeze">
+    <link rel="apple-touch-icon" href="./favicon.svg">
+
+    <!-- Dynamic Glow Styles -->
+    <style id="dynamic-glow">
+        .brightness-icon.glow-active {
+            box-shadow: 0 0 calc(10px + var(--glow-size, 0px)) calc(2px + var(--glow-spread, 0px)) rgba(255, 165, 0, 0.6);
+            transition: box-shadow 0.15s ease-out;
+        }
+    </style>
 </head>
+ 
 <body>
-    <div class="card">
-        <h1>LOHO-Squeeze</h1>
-        <div class="status" id="deviceName">&nbsp;</div>
+ 
+<header class="site-header">
+    <nav class="header-nav">
+ 
+        <img
+            src="./loho-logo.svg"
+            alt="LOHO"
+            class="logo"
+        >
+ 
+        <a href="/" class="nav-link active">
+            CONTROL
+        </a>
+ 
+        <a href="/settings" class="nav-link">
+            SETTINGS
+        </a>
+ 
+    </nav>
+</header>
+ 
+ 
+<main class="page">
+ 
+    <section class="control-section">
+ 
+        <div class="control-card">
 
-        <button type="button" class="btn" id="toggleBtn">Toggle</button>
-        <input type="range" id="dimmer" min="0" max="255" value="128"
-               aria-label="Brightness">
-        <div class="status" id="state">Loading&hellip;</div>
+            <!-- =================================================
+                 BRIGHTNESS ICON (Now works as a interactive slider)
+                 ================================================= -->
+ 
+            <div class="brightness-icon-wrapper">
+ 
+                <div
+                    class="brightness-icon"
+                    id="brightnessIcon"
+                    style="cursor: ns-resize; touch-action: none;"
+                >
+                <div class="brightness-icon-content">
 
-        <h2>Devices on network</h2>
-        <ul id="devices-container">
-            <li class="muted">Searching&hellip;</li>
-        </ul>
+                    <span id="brightnessValue">
+                        0
+                    </span>
 
-        <div class="link-row"><a href="/settings">SETTINGS</a></div>
+                    <span class="brightness-unit">
+                        %
+                    </span>
+
+                </div>
+                
+                    <div
+                        class="brightness-fill"
+                        id="brightnessFill"
+                    ></div>
+ 
+                </div>
+ 
+            </div>
+ 
+ 
+            <!-- =================================================
+                 TOGGLE BUTTON
+                 ================================================= -->
+ 
+            <button
+                class="btn toggle-btn inactive"
+                id="toggleBtn"
+                onclick="fetch('/api/control?toggle=1').then(() => syncState())"
+            >
+                <span class="btn-text">
+                    Toggle light
+                </span>
+            </button>
+ 
+        </div>
+ 
+    </section>
+
+</main>
+ 
+ 
+<footer class="site-footer">
+ 
+    <div class="footer-top">
+ 
+        <div class="footer-brand">
+ 
+            <img
+                src="./loho-logo.svg"
+                alt="LOHO"
+                class="logo"
+            >
+ 
+        </div>
+ 
+    </div>
+ 
+      <button id="pwaInstallBtn" class="btn active" style="display: none; margin-top: 1rem;">
+        <span class="btn-text">Install App</span>
+    </button>
+
+    <div id="iosInstallModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: #111; color: #fff; padding: 20px; border-radius: 12px; max-width: 300px; text-align: center; border: 1px solid #333;">
+            <h3 style="margin-top: 0;">Install Squeeze</h3>
+            <p style="font-size: 0.9rem; color: #ccc;">To install on iPhone:</p>
+            <ol style="text-align: left; font-size: 0.85rem; line-height: 1.5; padding-left: 20px; color: #aaa;">
+                <li>Tap the <strong>Share button</strong> in Safari menu.</li>
+                <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            </ol>
+            <button onclick="document.getElementById('iosInstallModal').style.display='none'" class="btn active" style="margin-top: 10px; width: 100%;">Got it</button>
+        </div>
+    </div>
+    <div class="footer-bottom">
+ 
+        <span>
+            Studio LOHO
+        </span>
+ 
+        <span>
+            © 2026
+        </span>
+        
     </div>
 
-    <script>
-        const $ = (id) => document.getElementById(id);
+</footer>
+ 
+ 
+<script>
+ 
+let currentBrightness = 0;
+let minB = 0;
+let maxB = 254;
+let isDragging = false;
+let isLedOn = false;
+ 
+ 
+/* =========================================================
+   UPDATE BRIGHTNESS DISPLAY & GLOW EFFECT
+   ========================================================= */
+ 
+function updateBrightnessDisplay(value) {
+ 
+    let percentage = 0;
+ 
+    if (maxB > minB) {
+ 
+        percentage = Math.round(
+            ((Number(value) - minB) / (maxB - minB)) * 100
+        );
+ 
+    }
+ 
+    percentage = Math.max(0, Math.min(100, percentage));
+ 
+    document.getElementById('brightnessValue').innerText = percentage;
+    document.getElementById('brightnessFill').style.height = percentage + '%';
+ 
+    /*
+     * Update Glow Effect based on percentage and ON state
+     */
+    const icon = document.getElementById('brightnessIcon');
 
-        // Serialise control writes. /api/control persists to NVS on every call,
-        // so the slider fires on "change" (release) rather than "input".
-        async function control(query) {
-            try {
-                await fetch('/api/control?' + query);
-            } catch (e) {
-                console.error('control failed', e);
+    if (isLedOn) {
+        icon.classList.add('glow-active');
+        
+        // Scale glow blur size (0px to 40px) and spread (0px to 15px) relative to brightness %
+        const glowBlur = Math.round((percentage / 100) * 40);
+        const glowSpread = Math.round((percentage / 100) * 15);
+
+        icon.style.setProperty('--glow-size', glowBlur + 'px');
+        icon.style.setProperty('--glow-spread', glowSpread + 'px');
+    } else {
+        icon.classList.remove('glow-active');
+    }
+}
+ 
+ 
+/* =========================================================
+   SYNCHRONIZE UI WITH ESP32
+   ========================================================= */
+ 
+function syncState() {
+    if (isDragging) return; // Prevent overwriting while dragging
+ 
+    fetch('/api/state')
+ 
+        .then(response => {
+ 
+            if (!response.ok) {
+                throw new Error('Failed to get state');
             }
-            refreshState();
-        }
-
-        async function refreshState() {
-            try {
-                const r = await fetch('/api/state');
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const d = await r.json();
-
-                const slider = $('dimmer');
-                slider.min = d.minB;
-                slider.max = d.maxB;
-                // Don't fight the user while they are dragging the handle.
-                if (document.activeElement !== slider) slider.value = d.pwm;
-
-                $('state').innerHTML = d.ledOn
-                    ? '<span style="color:#4CAF50">ON</span> &middot; PWM ' + d.pwm
-                    : '<span style="color:#999">OFF</span> &middot; PWM ' + d.pwm;
-            } catch (e) {
-                $('state').textContent = 'Device unreachable';
+ 
+            return response.json();
+ 
+        })
+ 
+        .then(data => {
+ 
+            const indicator = document.getElementById('powerIndicator');
+            const toggleBtn = document.getElementById('toggleBtn');
+ 
+            minB = Number(data.minB);
+            maxB = Number(data.maxB);
+            isLedOn = Boolean(data.ledOn);
+ 
+            currentBrightness = Number(data.pwm);
+            updateBrightnessDisplay(currentBrightness);
+ 
+            if (isLedOn) {
+ 
+                indicator.innerText = 'ON';
+                indicator.classList.add('active');
+ 
+                toggleBtn.classList.remove('inactive');
+                toggleBtn.classList.add('active');
+ 
+            } else {
+ 
+                indicator.innerText = 'OFF';
+                indicator.classList.remove('active');
+ 
+                toggleBtn.classList.remove('active');
+                toggleBtn.classList.add('inactive');
+ 
             }
-        }
+ 
+        })
+ 
+        .catch(error => {
+ 
+            console.error('Failed to synchronize state:', error);
+ 
+        });
+ 
+}
 
-        // BUG FIX: the previous version appended the status inside a .then()
-        // but assigned container.innerHTML synchronously right after, so the
-        // fetch always resolved too late and its output was thrown away.
-        // Awaiting the data before touching the DOM removes the race.
-        async function loadDevices() {
-            const container = $('devices-container');
-            try {
-                const r = await fetch('/api/devices');
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const data = await r.json();
-                const devices = data.devices || [];
+ 
+/* =========================================================
+   INTERACTIVE CIRCLE SLIDER
+   ========================================================= */
 
-                if (!devices.length) {
-                    container.innerHTML = '<li class="muted">No devices found.</li>';
-                    return;
+const icon = document.getElementById('brightnessIcon');
+
+function calculatePwmFromY(clientY) {
+    const rect = icon.getBoundingClientRect();
+    // 0 at top, 1 at bottom
+    let ratio = (clientY - rect.top) / rect.height; 
+    
+    // Clamp ratio between 0 and 1
+    ratio = Math.max(0, Math.min(1, ratio)); 
+    
+    // Invert so sliding UP increases brightness and sliding DOWN decreases
+    const invertedRatio = 1 - ratio; 
+    
+    return Math.round(minB + invertedRatio * (maxB - minB));
+}
+
+function handlePointerMove(e) {
+    if (!isDragging) return;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    currentBrightness = calculatePwmFromY(clientY);
+    updateBrightnessDisplay(currentBrightness);
+}
+
+function handlePointerStart(e) {
+    isDragging = true;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    currentBrightness = calculatePwmFromY(clientY);
+    updateBrightnessDisplay(currentBrightness);
+}
+
+function handlePointerEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+
+    // Send final updated PWM to API
+    fetch('/api/control?pwm=' + currentBrightness)
+        .then(() => syncState())
+        .catch(error => {
+            console.error('Failed to update brightness:', error);
+        });
+}
+
+// Mouse events
+icon.addEventListener('mousedown', handlePointerStart);
+window.addEventListener('mousemove', handlePointerMove);
+window.addEventListener('mouseup', handlePointerEnd);
+
+// Touch events for mobile
+icon.addEventListener('touchstart', handlePointerStart);
+window.addEventListener('touchmove', handlePointerMove);
+window.addEventListener('touchend', handlePointerEnd);
+
+ 
+/* =========================================================
+   INITIAL SYNCHRONIZATION
+   ========================================================= */
+ 
+syncState();
+ 
+ 
+/* =========================================================
+   KEEP UI SYNCHRONIZED
+   ========================================================= */
+ 
+setInterval(syncState, 1000);
+
+
+/* =========================================================
+   PWA SERVICE WORKER REGISTRATION
+   ========================================================= */
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registered:', reg.scope))
+            .catch(err => console.error('Service Worker registration failed:', err));
+    });
+}
+ /* =========================================================
+   PWA INSTALL BUTTON LOGIC
+   ========================================================= */
+
+let deferredPrompt;
+const installBtn = document.getElementById('pwaInstallBtn');
+const iosModal = document.getElementById('iosInstallModal');
+
+// Detect iOS device
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+// Detect if running already installed as a standalone PWA
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+if (!isStandalone) {
+    if (isIOS) {
+        // Show install button for iOS users to open instruction modal
+        installBtn.style.display = 'block';
+        installBtn.addEventListener('click', () => {
+            iosModal.style.display = 'flex';
+        });
+    } else {
+        // Capture Android / Desktop browser install prompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block';
+        });
+
+        installBtn.addEventListener('click', () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    installBtn.style.display = 'none';
                 }
+                deferredPrompt = null;
+            });
+        });
+    }
+}
 
-                container.innerHTML = devices.map(function (dev) {
-                    const label = dev.self
-                        ? ' <em>(this device)</em>'
-                        : '';
-                    const link = dev.self
-                        ? dev.ip
-                        : '<a href="http://' + dev.ip + '/">' + dev.ip + '</a>';
-                    return '<li' + (dev.self ? ' class="self"' : '') + '>' +
-                           '<strong>' + dev.name + '</strong>' + label +
-                           '<br><span class="muted">' + link + '</span></li>';
-                }).join('');
-            } catch (e) {
-                console.error(e);
-                container.innerHTML =
-                    '<li class="muted">Could not load devices. ' +
-                    'Make sure this device is connected to Wi-Fi.</li>';
-            }
-        }
-
-        $('toggleBtn').addEventListener('click', () => control('toggle=1'));
-        $('dimmer').addEventListener('change', (e) => control('pwm=' + e.target.value));
-
-        fetch('/api/settings')
-            .then(r => r.json())
-            .then(s => { if (s.ssid) $('deviceName').textContent = 'Wi-Fi: ' + s.ssid; })
-            .catch(() => {});
-
-        refreshState();
-        loadDevices();
-        setInterval(refreshState, 3000);
-        // Peers announce every 60s, so polling the list faster buys nothing.
-        setInterval(loadDevices, 30000);
-    </script>
+// Hide button automatically if opened as installed PWA
+window.addEventListener('appinstalled', () => {
+    installBtn.style.display = 'none';
+});
+</script>
+ 
 </body>
 </html>

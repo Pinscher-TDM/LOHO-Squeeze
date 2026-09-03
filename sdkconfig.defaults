@@ -1,0 +1,2 @@
+# Increase LWIP socket table beyond the default 10 to handle our WebServer, MQTT client, and mDNS responder. This is the likely cause of "write(): fail ... errno: 11" (EAGAIN) once things get busy.
+CONFIG_LWIP_MAX_SOCKETS=16

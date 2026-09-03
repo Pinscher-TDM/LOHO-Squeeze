@@ -1,0 +1,353 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>LohoSqueeze — Firmware</title>
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" type="text/css" href="/style.css">
+</head>
+
+
+<body>
+
+<header class="site-header">
+
+    <a href="/" class="brand">
+        <span class="brand-mark">LOHO</span>
+        <span class="brand-sub">SQUEEZE</span>
+    </a>
+
+    <nav class="header-nav">
+        <a href="/">CONTROL</a>
+        <a href="/settings">SETTINGS</a>
+        <a href="/update" class="active">UPDATE</a>
+    </nav>
+
+</header>
+
+
+<main class="page">
+
+    <section class="hero hero-small">
+
+        <div class="eyebrow">SOFTWARE</div>
+
+        <h1>
+            Firmware<br>
+            updates.
+        </h1>
+
+        <p class="intro">
+            Keep your LohoSqueeze controller up to date.
+        </p>
+
+    </section>
+
+
+    <section class="update-section">
+
+        <div class="section-label">
+            <span>01</span>
+            AVAILABLE RELEASES
+        </div>
+
+
+        <div class="update-status" id="status">
+            Loading releases from GitHub...
+        </div>
+
+
+        <div class="release-list" id="releases"></div>
+
+    </section>
+
+
+    <a href="/" class="back-link">
+        ← BACK TO CONTROL
+    </a>
+
+</main>
+
+
+<footer class="site-footer">
+
+    <div class="footer-top">
+
+        <div class="footer-brand">
+            <div class="brand-mark">LOHO</div>
+            <div class="brand-sub">SQUEEZE</div>
+        </div>
+
+        <div class="footer-links">
+            <a href="/">Control</a>
+            <a href="/settings">Settings</a>
+            <a href="/update">Firmware</a>
+        </div>
+
+    </div>
+
+    <div class="footer-bottom">
+        <span>LohoSqueeze</span>
+        <span>© 2026</span>
+    </div>
+
+</footer>
+
+
+<script>
+
+function fmtSize(bytes) {
+
+    if (!bytes) return '';
+
+    return (bytes / 1024).toFixed(0) + ' KB';
+
+}
+
+
+function loadReleases() {
+
+    document.getElementById('status').innerText =
+        'Loading releases from GitHub...';
+
+
+    fetch('/api/releases')
+
+        .then(r => {
+
+            if (!r.ok) {
+
+                return r.json().then(e => {
+
+                    throw new Error(
+                        e.error || ('HTTP ' + r.status)
+                    );
+
+                });
+
+            }
+
+            return r.json();
+
+        })
+
+
+        .then(releases => {
+
+            const list =
+                document.getElementById('releases');
+
+            list.innerHTML = '';
+
+
+            if (releases.length === 0) {
+
+                document.getElementById('status').innerText =
+                    'No releases found.';
+
+                return;
+
+            }
+
+
+            document.getElementById('status').innerText =
+                releases.length + ' release(s) found.';
+
+
+            releases.forEach(rel => {
+
+                const div =
+                    document.createElement('article');
+
+                div.className = 'release';
+
+
+                div.innerHTML =
+
+                    '<div class="release-header">' +
+
+                        '<div>' +
+                            '<div class="release-name">' +
+                                rel.name +
+                            '</div>' +
+
+                            '<div class="release-tag">' +
+                                rel.tag +
+                            '</div>' +
+                        '</div>' +
+
+                        '<div class="release-index">' +
+                            String(rel.index + 1).padStart(2, '0') +
+                        '</div>' +
+
+                    '</div>' +
+
+
+                    '<div class="release-meta">' +
+
+                        '<span>' +
+                            rel.date +
+                        '</span>' +
+
+                        (rel.hasFirmware
+                            ? '<span>' +
+                                fmtSize(rel.size) +
+                              '</span>'
+                            : '') +
+
+                    '</div>' +
+
+
+                    (rel.hasFirmware
+
+                        ?
+
+                        '<button ' +
+                            'class="btn btn-primary" ' +
+                            'data-index="' +
+                                rel.index +
+                            '">' +
+
+                            '<span>INSTALL THIS VERSION</span>' +
+                            '<span class="arrow">↗</span>' +
+
+                        '</button>'
+
+                        :
+
+                        '<div class="missing">' +
+                            'NO FIRMWARE FILE ATTACHED' +
+                        '</div>'
+
+                    );
+
+
+                list.appendChild(div);
+
+            });
+
+
+            list.querySelectorAll(
+                'button[data-index]'
+            ).forEach(btn => {
+
+                btn.addEventListener(
+                    'click',
+                    () => installRelease(
+                        btn.dataset.index,
+                        btn
+                    )
+                );
+
+            });
+
+        })
+
+
+        .catch(err => {
+
+            document.getElementById('status').innerText =
+                'Failed to load releases: ' +
+                err.message;
+
+        });
+
+}
+
+
+
+function installRelease(index, btn) {
+
+    if (!confirm(
+        'Install this firmware version? The device will reboot when done.'
+    )) return;
+
+
+    document
+        .querySelectorAll('.release .btn')
+        .forEach(b => b.disabled = true);
+
+
+    btn.innerText =
+        'INSTALLING... THIS CAN TAKE A MINUTE';
+
+
+    document.getElementById('status').innerText =
+        'Downloading and flashing — do not power off the device.';
+
+
+    fetch(
+        '/api/ota?index=' + index,
+        {
+            method: 'POST'
+        }
+    )
+
+
+    .then(r => {
+
+        return r.text().then(text => ({
+            ok: r.ok,
+            text
+        }));
+
+    })
+
+
+    .then(({ ok, text }) => {
+
+        if (ok) {
+
+            document.getElementById('status').innerText =
+                text +
+                ' — reconnect in about 15 seconds.';
+
+        }
+
+        else {
+
+            document.getElementById('status').innerText =
+                text;
+
+            document
+                .querySelectorAll('.release .btn')
+                .forEach(b => b.disabled = false);
+
+            btn.innerText =
+                'INSTALL THIS VERSION';
+
+        }
+
+    })
+
+
+    .catch(err => {
+
+        document.getElementById('status').innerText =
+            'Update request failed: ' +
+            err.message;
+
+        document
+            .querySelectorAll('.release .btn')
+            .forEach(b => b.disabled = false);
+
+        btn.innerText =
+            'INSTALL THIS VERSION';
+
+    });
+
+}
+
+
+loadReleases();
+
+</script>
+
+</body>
+</html>
+```
