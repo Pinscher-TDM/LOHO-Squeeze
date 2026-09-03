@@ -1,21 +1,25 @@
 #include "web_server.h"
 #include "config.h"
 #include "light_control.h"   // isButtonPressed() for /api/state
-#include "mqtt_handler.h"
+#include "ota_updater.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
+#include <vector>
 
 static WebServer server(80);
 static DNSServer dnsServer;
 static bool apMode = false;
-static bool serverStarted = false;      // BUG FIX: guards against double-registering routes
+static bool serverStarted = false;      // guards against double-registering routes
 static unsigned long lastWifiRetry = 0;
 
-// Diagnostic: log Wi-Fi lifecycle events so AP drops / client joins are
-// visible on the serial monitor with a reason.
+// Populated by GET /api/releases, consumed by index into POST /api/ota -
+// keeps the release URLs (which are long) out of the client<->device
+// round trip.
+static std::vector<GitHubRelease> cachedReleases;
+
 static void onWiFiEvent(WiFiEvent_t event) {
     switch (event) {
         case ARDUINO_EVENT_WIFI_AP_START:           Serial.println("[WiFi] AP started"); break;
@@ -37,9 +41,8 @@ void setupWiFi() {
         WiFi.setHostname(DEVICE_HOSTNAME);
         WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
         // Many ESP32-C3 boards have a poorly matched PCB antenna that
-        // distorts the signal at full TX power, making Wi-Fi unreliable or
-        // invisible. Capping to 8.5 dBm is the standard fix. Must be called
-        // after the radio is started (begin/softAP).
+        // distorts the signal at full TX power. Cap it (must run after
+        // the radio starts).
         WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
         unsigned long start = millis();
@@ -50,7 +53,6 @@ void setupWiFi() {
         apMode = false;
         Serial.printf("[WEB] Wi-Fi connected, IP: %s\n", WiFi.localIP().toString().c_str());
         MDNS.begin(DEVICE_HOSTNAME);
-        initHomeSpan();
     } else {
         WiFi.mode(WIFI_AP);
         bool apOk = WiFi.softAP("LOHO-Squeeze");
@@ -63,11 +65,8 @@ void setupWiFi() {
     }
 }
 
-// BUG FIX (missing feature): this project never shut the fallback AP down
-// once real Wi-Fi became reachable, so it would stay in AP mode forever
-// once it fell back to it, even after the router came back up. This
-// retries the saved credentials in the background every
-// WIFI_RETRY_INTERVAL_MS and tears the AP down the moment it connects.
+// Once real Wi-Fi becomes reachable, retire the fallback AP. Retries the
+// saved credentials in the background every WIFI_RETRY_INTERVAL_MS.
 static void checkBackgroundReconnect() {
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("[WEB] Wi-Fi connected in the background - shutting down fallback AP");
@@ -90,13 +89,18 @@ static void checkBackgroundReconnect() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm);  // see comment above - C3 antenna fix
 }
 
+static String readFile(const char* path) {
+    File f = LittleFS.open(path, "r");
+    if (!f) return "";
+    String contents = f.readString();
+    f.close();
+    return contents;
+}
+
 // Web Server route registration - idempotent, safe to call multiple times
 void initWebServerRoutes() {
     if (serverStarted) return;  // Already initialized
-    
-    // Only start web server routes if KNX is not enabled (single-stack architecture)
-    if (settings.knxEnabled) return;
-    
+
     Serial.println("[WEB] Initializing web server routes");
 
     if (!LittleFS.begin(true)) {
@@ -104,22 +108,27 @@ void initWebServerRoutes() {
         return;
     }
 
-    server.on("/", HTTP_GET, [&]() {
+    server.on("/", HTTP_GET, []() {
         server.sendHeader("Connection", "close");
-        server.send(200, "text/html", LittleFS.open("/index.html", "r").readString());
+        server.send(200, "text/html", readFile("/index.html"));
     });
 
-    server.on("/settings", HTTP_GET, [&]() {
+    server.on("/settings", HTTP_GET, []() {
         server.sendHeader("Connection", "close");
-        server.send(200, "text/html", LittleFS.open("/settings.html", "r").readString());
+        server.send(200, "text/html", readFile("/settings.html"));
     });
 
-    server.on("/style.css", HTTP_GET, [&]() {
+    server.on("/update", HTTP_GET, []() {
         server.sendHeader("Connection", "close");
-        server.send(200, "text/css", LittleFS.open("/style.css", "r").readString());
+        server.send(200, "text/html", readFile("/update.html"));
     });
 
-    server.on("/api/state", HTTP_GET, [&]() {
+    server.on("/style.css", HTTP_GET, []() {
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/css", readFile("/style.css"));
+    });
+
+    server.on("/api/state", HTTP_GET, []() {
         String json = "{\"ledOn\":" + String(ledOn ? "true" : "false") +
                       ",\"btn\":" + String(isButtonPressed() ? "true" : "false") +
                       ",\"pwm\":" + String(currentPWM) +
@@ -129,77 +138,42 @@ void initWebServerRoutes() {
         server.send(200, "application/json", json);
     });
 
-    // BUG FIX (missing feature): settings.html had no way to pre-fill the
-    // form with current values, so saving would blank out anything you
-    // didn't retype (including your Wi-Fi SSID/password). This feeds the
-    // form on page load. Passwords are deliberately left out of this
-    // response - see the /save handler for how "leave blank to keep" works.
-    server.on("/api/settings", HTTP_GET, [&]() {
+    // Pre-fills the settings form on load. Passwords are deliberately left
+    // out of this response - see /save for how "leave blank to keep" works.
+    server.on("/api/settings", HTTP_GET, []() {
         String json = "{";
         json += "\"ssid\":\"" + settings.ssid + "\",";
         json += "\"minB\":" + String(settings.minBrightness) + ",";
         json += "\"maxB\":" + String(settings.maxBrightness) + ",";
-        json += "\"speed\":" + String(settings.dimSpeed) + ",";
-        json += "\"homespanEnabled\":" + String(settings.homespanEnabled ? "true" : "false") + ",";
-        if (settings.homespanDeviceId.length() > 0) {
-            json += "\"homespanDeviceId\":\"" + settings.homespanDeviceId + "\",";
-        }
-
-        json += "\"mqttServer\":\"" + settings.mqttServer + "\",";
-        json += "\"mqttPort\":" + String(settings.mqttPort) + ",";
-        json += "\"mqttUser\":\"" + settings.mqttUser + "\",";
-        json += "\"mqttTopic\":\"" + settings.mqttTopicBase + "\"";
+        json += "\"speed\":" + String(settings.dimSpeed);
         json += "}";
         server.sendHeader("Connection", "close");
         server.send(200, "application/json", json);
     });
 
-    server.on("/api/control", HTTP_GET, [&]() {
+    server.on("/api/control", HTTP_GET, []() {
         if (server.hasArg("toggle")) ledOn = !ledOn;
         if (server.hasArg("pwm")) {
             currentPWM = constrain(server.arg("pwm").toInt(), settings.minBrightness, settings.maxBrightness);
             ledOn = true;
         }
         applyPWM(true);
+        settings.lastPWM = currentPWM;
         saveSettings();
         server.sendHeader("Connection", "close");
         server.send(200, "text/plain", "OK");
     });
 
-    server.on("/api/ha-discover", HTTP_GET, [&]() {
-        // BUG FIX: this used to unconditionally report success even if
-        // MQTT wasn't enabled/connected, so the button lied.
-        if (!settings.mqttEnabled) {
-            server.sendHeader("Connection", "close");
-            server.send(400, "text/plain", "MQTT is not enabled - turn it on and save first");
-            return;
-        }
-        publishHADiscovery();
-        server.sendHeader("Connection", "close");
-        server.send(200, "text/plain", "OK");
-    });
-
-    server.on("/save", HTTP_POST, [&]() {
+    server.on("/save", HTTP_POST, []() {
         if (server.hasArg("ssid")) settings.ssid = server.arg("ssid");
-        // BUG FIX: only overwrite the password if a new one was actually
-        // typed - the settings page never sends the old one back down (for
-        // security), so previously every save wiped it out.
+        // Only overwrite the password if a new one was actually typed - the
+        // settings page never sends the old one back down (for security).
         if (server.hasArg("password") && server.arg("password").length() > 0) {
             settings.password = server.arg("password");
         }
-        if (server.hasArg("homespanEnabled")) settings.homespanEnabled = server.hasArg("homespanEnabled");
-        if (server.hasArg("homespanDeviceId")) settings.homespanDeviceId = server.arg("homespanDeviceId");
         if (server.hasArg("minB")) settings.minBrightness = server.arg("minB").toInt();
         if (server.hasArg("maxB")) settings.maxBrightness = server.arg("maxB").toInt();
         if (server.hasArg("speed")) settings.dimSpeed = server.arg("speed").toInt();
-        settings.mqttEnabled = server.hasArg("mqttEnabled");
-        if (server.hasArg("mqttServer")) settings.mqttServer = server.arg("mqttServer");
-        if (server.hasArg("mqttPort")) settings.mqttPort = server.arg("mqttPort").toInt();
-        if (server.hasArg("mqttUser")) settings.mqttUser = server.arg("mqttUser");
-        if (server.hasArg("mqttPass") && server.arg("mqttPass").length() > 0) {
-            settings.mqttPass = server.arg("mqttPass");
-        }
-        if (server.hasArg("mqttTopic")) settings.mqttTopicBase = server.arg("mqttTopic");
         saveSettings();
 
         server.sendHeader("Connection", "close");
@@ -208,7 +182,66 @@ void initWebServerRoutes() {
         ESP.restart();
     });
 
-    server.onNotFound([&]() {
+    // --- GitHub Releases OTA -------------------------------------------
+
+    server.on("/api/releases", HTTP_GET, []() {
+        String err;
+        if (!fetchGitHubReleases(cachedReleases, err)) {
+            server.sendHeader("Connection", "close");
+            server.send(502, "application/json", "{\"error\":\"" + err + "\"}");
+            return;
+        }
+
+        String json = "[";
+        for (size_t i = 0; i < cachedReleases.size(); i++) {
+            if (i) json += ",";
+            const GitHubRelease& r = cachedReleases[i];
+            json += "{";
+            json += "\"index\":" + String(i) + ",";
+            json += "\"tag\":\"" + r.tag + "\",";
+            json += "\"name\":\"" + r.name + "\",";
+            json += "\"date\":\"" + r.publishedAt + "\",";
+            json += "\"hasFirmware\":" + String(r.assetUrl.length() > 0 ? "true" : "false") + ",";
+            json += "\"size\":" + String((unsigned long)r.assetSize);
+            json += "}";
+        }
+        json += "]";
+        server.sendHeader("Connection", "close");
+        server.send(200, "application/json", json);
+    });
+
+    // Blocking on purpose: this is a barebones build and the download +
+    // flash only takes a handful of seconds. The HTTP response is only
+    // sent once the outcome (success/failure) is known.
+    server.on("/api/ota", HTTP_POST, []() {
+        if (!server.hasArg("index")) {
+            server.sendHeader("Connection", "close");
+            server.send(400, "text/plain", "missing 'index' argument");
+            return;
+        }
+        int idx = server.arg("index").toInt();
+        if (idx < 0 || idx >= (int)cachedReleases.size()) {
+            server.sendHeader("Connection", "close");
+            server.send(400, "text/plain", "invalid release index - fetch /api/releases again");
+            return;
+        }
+
+        GitHubRelease release = cachedReleases[idx]; // copy - server_ member could get reused
+        Serial.printf("[OTA] Update requested: %s\n", release.tag.c_str());
+
+        String err;
+        bool ok = performOTAUpdate(release, err);
+        server.sendHeader("Connection", "close");
+        if (ok) {
+            server.send(200, "text/plain", "OK - rebooting into " + release.tag);
+            delay(500);
+            ESP.restart();
+        } else {
+            server.send(500, "text/plain", "Update failed: " + err);
+        }
+    });
+
+    server.onNotFound([]() {
         if (apMode) {
             server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
             server.sendHeader("Connection", "close");
@@ -231,7 +264,7 @@ void initWebServer() {
 }
 
 bool isWebServerActive() {
-    return serverStarted && !settings.mqttEnabled;  // MQTT_ONLY mode disables web server
+    return serverStarted;
 }
 
 void shutdownWebServer() {

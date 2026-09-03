@@ -8,37 +8,31 @@
 
 #define DEVICE_HOSTNAME "Squeeze"
 
-#define PWM_FREQ      20000 
-#define PWM_RES       10    
-#define GAMMA         2.2   
+#define PWM_FREQ      20000
+#define PWM_RES       10
+#define GAMMA         2.2
 
 #define DEBOUNCE_MS       50
 #define HOLD_MS          400
-#define MQTT_RETRY_MS     5000 
 #define RAPID_PRESS_COUNT       10
 #define RAPID_PRESS_WINDOW_MS  3000
 #define WIFI_RETRY_INTERVAL_MS 30000
 
+// Settings persisted in NVS (Preferences). This is deliberately barebones:
+// only Wi-Fi + dimming + brightness memory. When a connection stack
+// (MQTT / HomeSpan / KNX) is reintroduced, add its settings fields here,
+// plus load/save lines in main.cpp's loadSettings()/saveSettings(), plus
+// form fields in data/settings.html.
 struct AppSettings {
     String ssid = "";
     String password = "";
+
     int minBrightness = 5;
     int maxBrightness = 255;
     int dimSpeed = 15;
-    
-    bool mqttEnabled = false;
-    String mqttServer = "";
-    int mqttPort = 1883;
-    String mqttUser = "";
-    String mqttPass = "";
-    String mqttTopicBase = "Squeeze/led";
+    int lastPWM = 128;      // brightness memory - restored on boot
 
-    bool homespanEnabled = false;
-    String homespanDeviceId = "";
-
-    bool knxEnabled = false;
     bool wifiRadioOff = false;
-    int lastPWM = 128;
 };
 
 extern AppSettings settings;

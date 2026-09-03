@@ -1,8 +1,6 @@
 #include "connection_stack_manager.h"
 #include "config.h"
 #include "web_server.h"
-#include "mqtt_handler.h"
-#include "knx_handler.h"
 
 ConnectionState ConnectionStackManager::connectionState = ConnectionState::NONE;
 
@@ -29,12 +27,6 @@ const char* ConnectionStackManager::getConnectionStateString(ConnectionState sta
     switch (state) {
         case ConnectionState::WEB_SERVER:
             return "Web Server";
-        case ConnectionState::HOMESPAN:
-            return "HomeSpan";
-        case ConnectionState::KNX:
-            return "KNX IP Interface";
-        case ConnectionState::MQTT_ONLY:
-            return "MQTT Broker Client Only";
         default:
             return "None";
     }
@@ -43,29 +35,13 @@ const char* ConnectionStackManager::getConnectionStateString(ConnectionState sta
 void ConnectionStackManager::startConfiguredStack() {
     if (isAnyStackActive() || settings.wifiRadioOff) return;
 
-    ConnectionState state = ConnectionState::NONE;
-    if (settings.knxEnabled && !settings.mqttEnabled) {
-        state = ConnectionState::KNX;
-    } else if (settings.homespanEnabled) {
-        // HomeSpan uses MQTT, so require MQTT to be enabled
-        if (!settings.mqttEnabled) return;  // invalid config - ignore
-        state = ConnectionState::HOMESPAN;
-    } else if (settings.mqttEnabled && !settings.knxEnabled) {
-        // MQTT is enabled but KNX isn't - use plain broker client
-        state = ConnectionState::MQTT_ONLY;
-    } else {
-        state = ConnectionState::WEB_SERVER;
-    }
-    if (state == ConnectionState::NONE) return;
+    // TODO(stacks): once other stacks are reintroduced, pick between them
+    // here based on settings (see original project's version of this file
+    // for the pattern: e.g. settings.mqttEnabled, settings.knxEnabled, ...).
+    // For now there's only one option.
+    ConnectionState state = ConnectionState::WEB_SERVER;
 
     setConnectionState(state);
     Serial.printf("[STACK] Starting %s stack...\n", getConnectionStateString(state));
-
-    if (state == ConnectionState::WEB_SERVER) {
-        initWebServer();
-    } else if (state == ConnectionState::HOMESPAN) {
-        initHomeSpan();
-    } else {
-        initMQTTBrokerClient();
-    }
+    initWebServer();
 }

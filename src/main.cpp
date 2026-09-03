@@ -3,23 +3,20 @@
 #include <Preferences.h>
 #include "config.h"
 #include "light_control.h"
-
 #include "connection_stack_manager.h"
 #include "web_server.h"
-#include "mqtt_handler.h"
-#include "knx_handler.h"
-#include "homespan_handler.h"
 
 AppSettings settings;
 static Preferences prefs;
 
-bool ledOn = false;           // LED on/off state (defined in main.cpp)
-int currentPWM = settings.lastPWM;  // Current PWM brightness value 0-255
+bool ledOn = false;                  // LED on/off state
+int currentPWM = settings.lastPWM;   // Current PWM brightness value 0-255
 
 void loadSettings() {
-    // On a fresh/erased flash the "dimmer" namespace doesn't exist yet, and a
-    // read-only open logs "nvs_open failed: NOT_FOUND". Opening read-write
-    // once creates the namespace so the read-only open below always succeeds.
+    // On a fresh/erased flash the "dimmer" namespace doesn't exist yet, and
+    // a read-only open logs "nvs_open failed: NOT_FOUND". Opening
+    // read-write once creates the namespace so the read-only open below
+    // always succeeds.
     prefs.begin("dimmer", false);
     prefs.end();
 
@@ -30,21 +27,9 @@ void loadSettings() {
     settings.maxBrightness = prefs.getInt("maxB", 255);
     settings.dimSpeed = prefs.getInt("speed", 15);
     settings.lastPWM = prefs.getInt("lastPwm", 128);
-    
-    settings.mqttEnabled = prefs.getBool("mqttEn", false);
-    settings.mqttServer = prefs.getString("mqttSrv", "");
-    settings.mqttPort = prefs.getInt("mqttPort", 1883);
-    settings.mqttUser = prefs.getString("mqttUser", "");
-    settings.mqttPass = prefs.getString("mqttPass", "");
-    settings.mqttTopicBase = prefs.getString("mqttTopic", "Squeeze/led");
-    settings.homespanEnabled = prefs.getBool("hsEn", false);
-    settings.homespanDeviceId = prefs.getString("hsDevId", "");
-    settings.knxEnabled = prefs.getBool("knxEn", false);
-
     settings.wifiRadioOff = prefs.getBool("wifiOff", false);
 
-    // Restore the light's last on/off state - saveSettings() stores it but
-    // it was never read back, so the light always booted "off".
+    // Brightness + on/off memory - restore exactly how the light was left.
     ledOn = prefs.getBool("ledOn", false);
     currentPWM = settings.lastPWM;
     prefs.end();
@@ -59,17 +44,6 @@ void saveSettings() {
     prefs.putInt("speed", settings.dimSpeed);
     prefs.putInt("lastPwm", currentPWM);
     prefs.putBool("ledOn", ledOn);
-
-    prefs.putBool("mqttEn", settings.mqttEnabled);
-    prefs.putString("mqttSrv", settings.mqttServer);
-    prefs.putInt("mqttPort", settings.mqttPort);
-    prefs.putString("mqttUser", settings.mqttUser);
-    prefs.putString("mqttPass", settings.mqttPass);
-    prefs.putString("mqttTopic", settings.mqttTopicBase);
-    prefs.putBool("hsEn", settings.homespanEnabled);
-    prefs.putString("hsDevId", settings.homespanDeviceId);
-    prefs.putBool("knxEn", settings.knxEnabled);
-
     prefs.putBool("wifiOff", settings.wifiRadioOff);
     prefs.end();
 }
@@ -103,15 +77,9 @@ void setup() {
         Serial.println("No Wi-Fi credentials found - using standalone mode.");
     }
 
-    // Single-Connection-Stack Architecture:
-    // Only ONE connection stack runs at a time. Choose one of:
-    //   1) Web Server (shares WiFi)
-    //   2) HomeSpan via MQTT
-    //   3) KNX IP Interface
-    //   4) MQTT Broker Client only
-    //
-    // If the settings don't select exactly one stack (or the Wi-Fi radio
-    // is switched off), this stays in NONE state and does nothing.
+    // Single-connection-stack architecture (see connection_stack_manager.h):
+    // only one connection stack runs at a time. This barebones build only
+    // has WEB_SERVER.
     ConnectionStackManager::startConfiguredStack();
 }
 
@@ -121,12 +89,8 @@ void loop() {
         case ConnectionState::WEB_SERVER:
             handleWebServer();
             break;
-        case ConnectionState::HOMESPAN:
-            handleHomeSpan();
-            break;
-        case ConnectionState::MQTT_ONLY:
-            handleMQTTBrokerClient();
-            break;
+        // TODO(stacks): add cases here as other connection stacks (MQTT,
+        // HomeSpan, KNX) are reintroduced - see connection_stack_manager.h.
         default:
             break;
     }
@@ -134,8 +98,7 @@ void loop() {
     // Handle button input (shared across all stacks)
     handleButton();
 
-    // Diagnostic: prints free heap every 10s. Useful for confirming
-    // whether memory pressure is contributing to issues.
+    // Diagnostic: prints free heap every 10s.
     static unsigned long lastHeapLog = 0;
     if (millis() - lastHeapLog > 10000) {
         lastHeapLog = millis();

@@ -1,124 +1,111 @@
-# LOHO Squeeze
+# LOHO Squeeze - Barebones
 
-A robust IoT light control solution built on an ESP32-C3, featuring MQTT connectivity, HomeSpan/KNX smart home integration, and a styled web interface.
+A stripped-down build of LOHO Squeeze for an ESP32-C3: physical-button
+dimming with brightness memory, a small web dashboard, and self-update
+from your GitHub Releases page. The MQTT / HomeSpan / KNX connectivity
+stacks from the full project have been removed but the code is structured
+so they can be dropped back in without a rewrite (see "Adding stacks back"
+below).
 
 ## Features
 
-### Connectivity & Discovery
-- **SSDP Discovery**: Announces device presence via SSDP multicast (224.0.0.251:1900) after WiFi connects and MDNS is initialized; unique lamp ID derived from ESP32-C3 efuse MAC address.
-- **MQTT Integration**: Publishes state to MQTT topics and supports remote on/off/brightness commands; includes Home Assistant discovery payloads.
-
-### HomeSpan Integration
-- Integrates with HomeSpan (https://github.com/home-span-project/HomeSpan) for smart home control via HomeKit.
-- Publishes state to `hs/<device_id>/light` and subscribes to `hs/+/light/set` for on/off/brightness commands.
-- Works alongside MQTT; both use the same underlying broker client.
-
-### Web Interface
-- Serves a styled dashboard from `/data` directory (`index.html`, `settings.html`, `style.css`) via embedded HTTP server using LittleFS for persistent storage.
-- Includes fallback AP mode with background reconnection logic to restore normal Wi-Fi when available.
-
-### KNX Integration
-- Communicates with KNX bus systems via IP interface using MQTT as transport.
-- Publishes state reports to `knx/<group>/1/0/state` and subscribes to ON/OFF command topics (`knx/<group>/<onoff>/0/on`).
-- Configurable topic base in settings; works alongside HomeSpan and MQTT stacks.
-
-### Light Control
-- PWM-based dimming with gamma correction for perceptually linear brightness control.
-- Physical button interface with debouncing, long-press detection, and radio toggle functionality.
+- **Physical button**: click to toggle, hold to dim. Dimming uses a
+  gamma-corrected curve (`GAMMA` in `src/config.h`) so brightness changes
+  feel linear to the eye instead of bunching up at one end. The last
+  on/off state and brightness are saved to flash (NVS) and restored on
+  boot.
+- **Web dashboard**: served from `data/` (`index.html`, `settings.html`,
+  `update.html`, `style.css`) via an embedded HTTP server + LittleFS.
+  Falls back to a `LOHO-Squeeze` Wi-Fi AP if it can't join your network,
+  and reconnects automatically in the background once your network is
+  reachable again.
+- **Self-update from GitHub Releases**: the `/update` page lists every
+  release from
+  [Pinscher-TDM/LOHO-Squeeze/releases](https://github.com/Pinscher-TDM/LOHO-Squeeze/releases)
+  with a firmware file attached, and lets you install any of them
+  (upgrade *or* roll back) with one click.
 
 ## Getting Started
 
-This project uses PlatformIO for build and deployment.
+Uses PlatformIO.
 
-### Prerequisites
-- [PlatformIO Core](https://platformio.org/download) installed on your system.
-- ESP32-C3 development board.
+1. `git clone <repo_url>`, open in VS Code with the PlatformIO extension.
+2. Wire the LED to `LED_PIN` and the button to `BUTTON_PIN` (`src/config.h`, GPIO 3 / 4 by default).
+3. Build and upload:
+   ```bash
+   pio run -t upload      # firmware
+   pio run -t uploadfs    # data/ -> LittleFS partition (the web pages)
+   ```
+   Both steps are needed the first time - skip `uploadfs` and every page
+   returns "Filesystem not mounted".
+4. On first boot with no saved Wi-Fi credentials, connect to the
+   `LOHO-Squeeze` AP and open `http://192.168.4.1/settings` to set your SSID/password.
 
-### Setup & Build
-1. Clone the repository: `git clone <repo_url>`
-2. Open in VS Code with PlatformIO extension.
-3. Configure your environment in `platformio.ini` (see below).
-4. Build and upload using the PlatformIO sidebar: **Build** → **Upload**.
+## Publishing an OTA-installable release
 
-### Flashing
+The update page only shows an "Install" button for releases that have a
+**firmware `.bin` asset attached** (any file ending in `.bin` - it looks
+for the first match). Releases without one are still listed, just not
+installable, so changelog-only releases are fine.
 
-The firmware alone is not enough - the web interface is served from a LittleFS
-image built out of `data/`, and that image is **not** written by a normal
-Upload. A complete flash is two steps:
-
+To publish one:
 ```bash
-pio run -t upload      # firmware
-pio run -t uploadfs    # data/ -> LittleFS partition
+pio run                              # builds .pio/build/esp32c3/firmware.bin
 ```
+Then create a GitHub release (tag it, e.g. `v1.1.0`) and attach
+`firmware.bin` as a release asset. That's it - the device will see it next
+time someone opens `/update`.
 
-Skip `uploadfs` and the device boots fine but every page returns
-"Filesystem not mounted".
+Note: OTA only replaces the **firmware**, not the web pages in `data/`.
+If you change `data/*`, ship a new `uploadfs` manually (or extend
+`src/ota_updater.cpp` to also fetch and write a filesystem image - the
+`spiffs` partition is separate from `ota_0`/`ota_1` for exactly this
+reason).
 
-If you change `partitions.csv`, erase the chip first. NVS lives at a fixed
-offset, so a re-layout leaves stale settings (Wi-Fi credentials) that decode as garbage:
+## Flash layout (`partitions.csv`)
 
-```bash
-pio run -t erase
-```
-
-### Troubleshooting: web UI unreachable
-
-Symptom: the device joins Wi-Fi and gets an IP, but the web page will not load,
-and the serial monitor repeats:
-
-```
-fail on fd <N>, errno: 11, "No more processes"
-```
-
-`errno 11` is `EAGAIN`. The ESP32-C3 has a **single radio** shared between Wi-Fi and BLE.
-When both stacks are active, coexistence arbitration can cause Wi-Fi reads to miss their
-deadline. This project only runs the web server stack, so this shouldn't happen:
-but if you ever see it, try disabling any BLE advertising or rebooting.
-
-Confirm on serial that the device is in STA mode:
-
-```
-[STACK] Starting Web Server stack...
-```
-
-### Flash layout
-
-4MB flash, factory-only (there is no OTA code in this firmware, so the
-`otadata`/`ota_0`/`ota_1` trio would only waste space):
+Unlike the original factory-only build, this one needs two app slots to
+support OTA:
 
 | Partition | Offset | Size |
 | --- | --- | --- |
-| bootloader | `0x0` | 32 KB |
-| partition table | `0x8000` | 4 KB |
 | `nvs` | `0x9000` | 20 KB |
-| `app` (factory) | `0x10000` | 3456 KB |
-| `spiffs` (LittleFS) | `0x370000` | 576 KB |
+| `otadata` | `0xe000` | 8 KB |
+| `app0` (`ota_0`) | `0x10000` | 1280 KB |
+| `app1` (`ota_1`) | `0x150000` | 1280 KB |
+| `spiffs` (LittleFS) | `0x290000` | 1472 KB |
 
-The binary is a large one, so most of the flash goes to the app. If a build ever fails to boot with `Image length ... doesn't fit in partition length` / `No bootable app partition`, the app outgrew its partition - that message comes from the bootloader, not from the upload.
+`Update.h` picks the inactive slot automatically - you don't need to
+track which one is "current". If you ever change `partitions.csv`, erase
+the chip first (`pio run -t erase`); NVS lives at a fixed offset, so a
+re-layout leaves stale settings that decode as garbage.
 
-The `spiffs` partition keeps that name and SubType deliberately even though it is formatted as LittleFS: both `LittleFS.begin()` and `uploadfs` locate the partition by subtype, and naming it `littlefs` trips a warning in `gen_esp32part.py`.
+## Architecture
 
-## Configuration (`platformio.ini`)
+- `src/main.cpp` - entry point, settings load/save (Preferences/NVS), main loop.
+- `src/config.h` - pins, tunables, and `AppSettings` (persisted settings struct).
+- `src/light_control.*` - PWM dimming, gamma correction, button debounce/hold/click, brightness memory.
+- `src/connection_stack_manager.*` - single-active-stack selector. Barebones: only `WEB_SERVER`.
+- `src/web_server.*` - HTTP server, LittleFS-served pages, fallback AP, settings API, OTA API.
+- `src/ota_updater.*` - talks to the GitHub Releases API, downloads and flashes a chosen release.
+- `data/` - the actual web pages (`index.html`, `settings.html`, `update.html`, `style.css`).
 
-The project is configured for the `esp32c3` environment with required libraries defined in the `.pio` configuration file.
+### Adding stacks back (MQTT / HomeSpan / KNX)
 
-## Architecture Overview
+The connection-stack pattern from the full project is intentionally kept
+even though only one stack (`WEB_SERVER`) is implemented here. To bring a
+stack back:
 
-- `src/main.cpp`: Entry point initializing all subsystems and starting the main loop.
-- `src/discovery.*`: SSDP presence broadcasting and unique lamp ID generation from efuse MAC.
-- `src/light_control.*`: PWM dimming, gamma correction, button debouncing, and radio toggle logic.
-- `src/mqtt_handler.*`: MQTT client setup, state publishing, and Home Assistant discovery.
-
-- `src/knx_handler.*`: KNX IP interface for integration with KNX bus systems; publishes state to KNX topics and supports remote on/off/brightness commands via KNX.
-- **Removed**: Matter protocol implementation (no longer included).
-- `src/web_server.*`: Embedded HTTP server with LittleFS storage and fallback AP mode handling.
-- `include/`: Shared headers for project-wide constants and declarations.
-
-## Library Dependencies
-
-The project uses the following PlatformIO libraries (defined in `platformio.ini`):
-
-- **ESPmDNS** – mDNS/SSDP discovery support.
-- **ArduinoJson** – JSON serialization for SSDP requests and MQTT payloads.
-- **PubSubClient** – MQTT client library.
-- **WebServer**, **DNSServer**, **LittleFS** – HTTP server, DNS handling, and persistent file storage.
+1. Add its handler files under `src/` (e.g. `mqtt_handler.h/.cpp`).
+2. Add a value for it to `ConnectionState` in `src/connection_stack_manager.h`.
+3. Add a branch for it in `ConnectionStackManager::startConfiguredStack()`
+   (`src/connection_stack_manager.cpp`).
+4. Add a `case ConnectionState::XXX: handleXxx(); break;` in `main.cpp`'s `loop()`.
+5. Add its settings fields to `AppSettings` in `src/config.h`, plus
+   load/save lines in `main.cpp`, plus a toggle in `data/settings.html`.
+6. If it needs to react to light state changes, define a non-weak
+   `onLightStateChanged()` in its `.cpp` - `src/light_control.cpp` already
+   calls this on every state change and has a no-op default, so nothing
+   there needs editing.
+7. Add its library back to `platformio.ini`'s `lib_deps` (e.g.
+   `knolleary/PubSubClient@^2.8`).

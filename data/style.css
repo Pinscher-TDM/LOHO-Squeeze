@@ -77,6 +77,11 @@ input[type="range"] {
   margin-top: 8px;
 }
 
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .status {
   font-size: 11px;
   color: var(--muted);
@@ -87,4 +92,40 @@ a {
   color: var(--accent);
   text-decoration: none;
   font-size: 11px;
+}
+
+/* Update page */
+.release-list {
+  text-align: left;
+  margin-top: 16px;
+}
+
+.release {
+  border: 1px solid var(--line);
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.release .tag {
+  font-weight: bold;
+}
+
+.release .date,
+.release .missing {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.release .missing {
+  color: #a9754f;
+}
+
+.release .btn {
+  margin-top: 10px;
+}
+
+.links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
 }

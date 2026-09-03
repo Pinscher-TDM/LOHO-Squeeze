@@ -13,24 +13,6 @@
             <label>SSID</label><input type="text" name="ssid" id="ssid">
             <label>Password</label><input type="password" name="password" placeholder="Leave blank to keep current password">
 
-            <h2>KNX</h2>
-            <label><input type="checkbox" name="knxEnabled" id="knxEnabled"> Enable KNX</label>
-            <div class="status" id="knxStatus">Checking...</div>
-            <button type="button" class="btn btn-sec" onclick="pairKnx()">Open Commissioning Window</button>
-
-            <h2>HomeSpan (MQTT)</h2>
-            <label><input type="checkbox" name="homespanEnabled" id="homespanEnabled"> Enable HomeSpan</label>
-            <label>Device ID</label><input type="text" name="homespanDeviceId" id="homespanDeviceId" placeholder="e.g. livingroom">
-
-            <h2>Home Assistant (MQTT)</h2>
-            <label><input type="checkbox" name="mqttEnabled" id="mqttEnabled"> Enable MQTT</label>
-            <label>Broker</label><input type="text" name="mqttServer" id="mqttServer">
-            <label>Port</label><input type="number" name="mqttPort" id="mqttPort">
-            <label>User</label><input type="text" name="mqttUser" id="mqttUser">
-            <label>Pass</label><input type="password" name="mqttPass" placeholder="Leave blank to keep current password">
-            <label>Topic</label><input type="text" name="mqttTopic" id="mqttTopic">
-            <button type="button" class="btn btn-sec" onclick="haDiscover()">Auto-Add to Home Assistant</button>
-
             <h2>Dimming Limits</h2>
             <label>Min</label><input type="number" name="minB" id="minB">
             <label>Max</label><input type="number" name="maxB" id="maxB">
@@ -44,37 +26,10 @@
     <script>
         fetch('/api/settings').then(r => r.json()).then(data => {
             document.getElementById('ssid').value = data.ssid;
-            document.getElementById('mqttEnabled').checked = data.mqttEnabled;
-            if (data.knxEnabled) {
-                document.getElementById('knxEnabled').checked = true;
-            }
-            document.getElementById('homespanEnabled').checked = data.homespanEnabled;
-            if (data.homespanDeviceId) {
-                document.getElementById('homespanDeviceId').value = data.homespanDeviceId;
-            }
-            document.getElementById('mqttServer').value = data.mqttServer;
-            document.getElementById('mqttPort').value = data.mqttPort;
-            document.getElementById('mqttUser').value = data.mqttUser;
-            document.getElementById('mqttTopic').value = data.mqttTopic;
             document.getElementById('minB').value = data.minB;
             document.getElementById('maxB').value = data.maxB;
             document.getElementById('speed').value = data.speed;
         });
-
-        fetch('/api/state').then(r => r.json()).then(data => {
-            alert('Light: ' + (data.ledOn ? 'ON' : 'OFF'));
-        });
-
-        function haDiscover() {
-            fetch('/api/ha-discover').then(r => {
-                if (r.ok) {
-                    alert('Auto-discovery published to Home Assistant.');
-                } else {
-                    r.text().then(t => alert('Failed: ' + t));
-                }
-            });
-        }
-
     </script>
 </body>
 </html>

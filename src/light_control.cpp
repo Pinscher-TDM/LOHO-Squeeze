@@ -1,9 +1,6 @@
 #include "light_control.h"
 #include "config.h"
-
 #include "connection_stack_manager.h"
-#include "web_server.h"
-#include "mqtt_handler.h"
 #include <Arduino.h>
 
 // Arduino-ESP32 3.x uses a pin-based LEDC API; 2.x is channel-based. These
@@ -20,6 +17,10 @@ static void pwmAttach() {
 static void pwmWrite(uint32_t duty) { ledcWrite(PWM_CHANNEL, duty); }
 #endif
 
+// Default no-op - overridden by a connection stack's .cpp if one is linked
+// in (see light_control.h).
+__attribute__((weak)) void onLightStateChanged() {}
+
 bool dimDirectionUp = true;
 
 static bool lastBtnState = LOW;
@@ -32,6 +33,9 @@ static bool holdHandled = false;
 static int rapidPressCount = 0;
 static unsigned long rapidPressWindowStart = 0;
 
+// Perceptually-linear dimming: raw PWM level (0-255) -> gamma-corrected duty
+// cycle (0 - (2^PWM_RES)-1). Without this, brightness changes feel bunched
+// up at the low end and barely-there at the high end.
 uint32_t gammaCorrect(uint8_t level) {
     const uint32_t dutyMax = (1UL << PWM_RES) - 1;
     float normalized = (float)level / 255.0f;
@@ -41,11 +45,7 @@ uint32_t gammaCorrect(uint8_t level) {
 
 void initLightControl() {
     pinMode(BUTTON_PIN, INPUT_PULLDOWN);
-
-    // BUG FIX: the LEDC channel was never attached to the pin anywhere in
-    // the project, so ledcWrite() had nothing to actually drive. This is
-    // the one-time setup call that was missing.
-    pwmAttach();  // attach once with frequency + resolution
+    pwmAttach();  // attach LEDC once with frequency + resolution
 
     // Power-on self-test: one short blink proves the whole PWM -> driver ->
     // LED hardware path works, independent of button/web logic.
@@ -56,9 +56,8 @@ void initLightControl() {
 bool isButtonPressed() {
     return btnState == HIGH;
 }
-// (and wrote the raw brightness, not 0), and did nothing at all when the
-// light was ON. This restores the correct on/off + gamma-corrected duty.
-void applyPWM(bool publish) {
+
+void applyPWM(bool notify) {
     uint32_t duty = 0;
     if (ledOn) {
         currentPWM = constrain(currentPWM, settings.minBrightness, settings.maxBrightness);
@@ -66,8 +65,6 @@ void applyPWM(bool publish) {
     }
     pwmWrite(duty);
 
-    // Diagnostic: log the duty actually written, but only when it changes
-    // (dimming calls this every few ms - don't flood the monitor).
     static uint32_t lastLoggedDuty = UINT32_MAX;
     if (duty != lastLoggedDuty) {
         lastLoggedDuty = duty;
@@ -75,15 +72,12 @@ void applyPWM(bool publish) {
                       ledOn ? "ON" : "OFF", duty, (1UL << PWM_RES) - 1, currentPWM, LED_PIN);
     }
 
-    if (publish) {
-        publishMQTTState();
+    if (notify) {
+        onLightStateChanged();
     }
 }
 
 void blinkConfirm(int times, int gapMs) {
-    // BUG FIX: this wrote settings.maxBrightness (0-255) directly as a duty
-    // cycle against a 10-bit (0-1023) channel, so "full brightness" was
-    // actually only ~25% duty. Use the real max duty for the confirm blink.
     const uint32_t fullDuty = (1UL << PWM_RES) - 1;
     for (int i = 0; i < times; i++) {
         pwmWrite(fullDuty);
@@ -114,9 +108,6 @@ void handleButton() {
     bool reading = digitalRead(BUTTON_PIN);
     if (reading != lastBtnState) {
         lastDebounceTime = millis();
-        // Diagnostic: raw edges on the pin, before debouncing. If pressing
-        // the physical button prints nothing at all, the wiring/pin is the
-        // problem, not the logic.
         Serial.printf("[BTN] raw GPIO %d -> %s\n", BUTTON_PIN, reading ? "HIGH" : "LOW");
     }
 
@@ -132,11 +123,13 @@ void handleButton() {
                     isHolding = false;
                     dimDirectionUp = !dimDirectionUp;
                     Serial.printf("[BTN] hold released - next hold dims %s\n", dimDirectionUp ? "up" : "down");
+                    settings.lastPWM = currentPWM;
                     saveSettings();
                 } else if (!holdHandled) {
                     Serial.println("[BTN] click - toggling light");
                     ledOn = !ledOn;
                     applyPWM(true);
+                    settings.lastPWM = currentPWM;
                     saveSettings();
 
                     unsigned long now = millis();
@@ -166,9 +159,6 @@ void handleButton() {
             if (millis() - lastDimTime >= (unsigned long)settings.dimSpeed) {
                 lastDimTime = millis();
 
-                // BUG FIX: this block previously did nothing at all -
-                // holding the button never changed currentPWM. Restored
-                // the one-direction-per-hold dimming logic here.
                 if (dimDirectionUp) {
                     if (currentPWM < settings.maxBrightness) currentPWM++;
                     if (currentPWM > settings.maxBrightness) currentPWM = settings.maxBrightness;

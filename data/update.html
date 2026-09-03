@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Update</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+</head>
+<body>
+    <div class="card">
+        <h1>Firmware Update</h1>
+        <div class="status" id="status">Loading releases from GitHub...</div>
+        <div class="release-list" id="releases"></div>
+        <br>
+        <a href="/">BACK</a>
+    </div>
+    <script>
+        function fmtSize(bytes) {
+            if (!bytes) return '';
+            return (bytes / 1024).toFixed(0) + ' KB';
+        }
+
+        function loadReleases() {
+            document.getElementById('status').innerText = 'Loading releases from GitHub...';
+            fetch('/api/releases').then(r => {
+                if (!r.ok) return r.json().then(e => { throw new Error(e.error || ('HTTP ' + r.status)); });
+                return r.json();
+            }).then(releases => {
+                const list = document.getElementById('releases');
+                list.innerHTML = '';
+                if (releases.length === 0) {
+                    document.getElementById('status').innerText = 'No releases found.';
+                    return;
+                }
+                document.getElementById('status').innerText = releases.length + ' release(s) found.';
+                releases.forEach(rel => {
+                    const div = document.createElement('div');
+                    div.className = 'release';
+                    div.innerHTML =
+                        '<div class="tag">' + rel.name + ' (' + rel.tag + ')</div>' +
+                        '<div class="date">' + rel.date + (rel.hasFirmware ? ' &middot; ' + fmtSize(rel.size) : '') + '</div>' +
+                        (rel.hasFirmware
+                            ? '<button class="btn" data-index="' + rel.index + '">Install this version</button>'
+                            : '<div class="missing">No firmware file attached to this release</div>');
+                    list.appendChild(div);
+                });
+                list.querySelectorAll('button[data-index]').forEach(btn => {
+                    btn.addEventListener('click', () => installRelease(btn.dataset.index, btn));
+                });
+            }).catch(err => {
+                document.getElementById('status').innerText = 'Failed to load releases: ' + err.message;
+            });
+        }
+
+        function installRelease(index, btn) {
+            if (!confirm('Install this firmware version? The device will reboot when done.')) return;
+            document.querySelectorAll('.release .btn').forEach(b => b.disabled = true);
+            btn.innerText = 'Installing... this can take a minute';
+            document.getElementById('status').innerText = 'Downloading and flashing - do not power off the device.';
+
+            fetch('/api/ota?index=' + index, { method: 'POST' }).then(r => {
+                return r.text().then(text => ({ ok: r.ok, text }));
+            }).then(({ ok, text }) => {
+                if (ok) {
+                    document.getElementById('status').innerText = text + ' - reconnect in about 15 seconds.';
+                } else {
+                    document.getElementById('status').innerText = text;
+                    document.querySelectorAll('.release .btn').forEach(b => b.disabled = false);
+                    btn.innerText = 'Install this version';
+                }
+            }).catch(err => {
+                document.getElementById('status').innerText = 'Update request failed: ' + err.message;
+                document.querySelectorAll('.release .btn').forEach(b => b.disabled = false);
+                btn.innerText = 'Install this version';
+            });
+        }
+
+        loadReleases();
+    </script>
+</body>
+</html>
