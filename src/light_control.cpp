@@ -46,11 +46,6 @@ uint32_t gammaCorrect(uint8_t level) {
 void initLightControl() {
     pinMode(BUTTON_PIN, INPUT_PULLDOWN);
     pwmAttach();  // attach LEDC once with frequency + resolution
-
-    // Power-on self-test: one short blink proves the whole PWM -> driver ->
-    // LED hardware path works, independent of button/web logic.
-    Serial.println("[LED] power-on self-test blink");
-    blinkConfirm(1, 150);
 }
 
 bool isButtonPressed() {
