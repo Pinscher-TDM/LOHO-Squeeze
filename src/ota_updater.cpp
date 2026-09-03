@@ -122,7 +122,9 @@ bool performOTAUpdate(const GitHubRelease& release, String& errorOut) {
     }
 
     Serial.printf("[OTA] Downloading %s (%d bytes)...\n", release.tag.c_str(), len);
-    WiFiClient* stream = https.getStreamPtr();
+    
+    // Fix: Use Stream* instead of WiFiClient*
+    Stream* stream = https.getStreamPtr();
     size_t written = Update.writeStream(*stream);
     https.end();
 

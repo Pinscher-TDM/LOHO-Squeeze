@@ -190,147 +190,127 @@ if (MDNS.begin(hostname.c_str())) {
 // Wi-Fi setup
 // -----------------------------------------------------------------------------
 
+// In the setupWiFi() function, replace the existing implementation with:
+
 void setupWiFi()
 {
-WiFi.onEvent(onWiFiEvent);
-
-
-// Make sure the device identity exists before configuring Wi-Fi.
-initializeDeviceIdentity();
-
-// The hostname reported to the DHCP server is the same hostname used
-// by mDNS.
-WiFi.setHostname(deviceHostname.c_str());
-
-if (settings.ssid.length() > 0) {
-
-    WiFi.mode(WIFI_STA);
-
+    WiFi.onEvent(onWiFiEvent);
+    
+    // Make sure the device identity exists before configuring Wi-Fi.
+    initializeDeviceIdentity();
+    
+    // The hostname reported to the DHCP server is the same hostname used
+    // by mDNS.
     WiFi.setHostname(deviceHostname.c_str());
-
-    WiFi.begin(
-        settings.ssid.c_str(),
-        settings.password.c_str()
-    );
-
-    // ESP32-C3 antenna workaround.
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
-
-    unsigned long start = millis();
-
-    while (
-        WiFi.status() != WL_CONNECTED &&
-        millis() - start < 10000
-    ) {
-        delay(500);
+    
+    if (settings.ssid.length() > 0) {
+        WiFi.mode(WIFI_STA);
+        WiFi.setHostname(deviceHostname.c_str());
+        WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);
+        
+        unsigned long start = millis();
+        unsigned long timeout = 15000; // Increased timeout to 15 seconds
+        
+        Serial.print("[WEB] Attempting to connect to ");
+        Serial.println(settings.ssid);
+        
+        while (WiFi.status() != WL_CONNECTED && millis() - start < timeout) {
+            delay(500);
+            Serial.print(".");
+        }
+        Serial.println();
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        apMode = false;
+        Serial.printf("[WEB] Wi-Fi connected, IP: %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("[WEB] Device hostname: http://%s.local\n", deviceHostname.c_str());
+        startMDNS();
+    } else {
+        // -----------------------------------------------------------------
+        // Fallback AP - Start AP mode
+        // -----------------------------------------------------------------
+        Serial.println("[WEB] No Wi-Fi connection available - starting fallback AP");
+        
+        // Use a unique AP name with the device MAC for identification
+        String apName = "LOHO-Squeeze-" + deviceMac.substring(12, 14) + deviceMac.substring(15, 17);
+        
+        // Try to start AP with a simple password
+        bool apOk = WiFi.softAP(apName.c_str(), "12345678");
+        
+        if (apOk) {
+            apMode = true;
+            Serial.printf("[WEB] Fallback AP '%s' started, IP: %s\n", 
+                         apName.c_str(), WiFi.softAPIP().toString().c_str());
+            Serial.printf("[WEB] AP Password: 12345678\n");
+            Serial.printf("[WEB] Device hostname: http://%s.local\n", deviceHostname.c_str());
+            
+            // Start DNS server for captive portal
+            dnsServer.start(53, "*", WiFi.softAPIP());
+            
+            // Try to advertise mDNS on the AP interface as well
+            startMDNS();
+        } else {
+            Serial.println("[WEB] FAILED TO START FALLBACK AP - system in error state");
+            // Optionally restart or blink LED to indicate error
+        }
     }
 }
 
-if (WiFi.status() == WL_CONNECTED) {
-
-    apMode = false;
-
-    Serial.printf(
-        "[WEB] Wi-Fi connected, IP: %s\n",
-        WiFi.localIP().toString().c_str()
-    );
-
-    Serial.printf(
-        "[WEB] Device hostname: http://%s.local\n",
-        deviceHostname.c_str()
-    );
-
-    startMDNS();
-
-} else {
-
-    // -----------------------------------------------------------------
-    // Fallback AP
-    // -----------------------------------------------------------------
-
-    WiFi.mode(WIFI_AP);
-
-    bool apOk = WiFi.softAP("LOHO-Squeeze");
-
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
-
-    Serial.printf(
-        "[WEB] Fallback AP 'LOHO-Squeeze' %s, IP: %s\n",
-        apOk ? "started" : "FAILED TO START",
-        WiFi.softAPIP().toString().c_str()
-    );
-
-    Serial.printf(
-        "[WEB] Device hostname: http://%s.local\n",
-        deviceHostname.c_str()
-    );
-
-    apMode = true;
-
-    dnsServer.start(
-        53,
-        "*",
-        WiFi.softAPIP()
-    );
-
-    // Try to advertise mDNS on the AP interface as well.
-    startMDNS();
-}
-
-
-}
-
-// -----------------------------------------------------------------------------
-// Background Wi-Fi reconnect
-// -----------------------------------------------------------------------------
+// Update the checkBackgroundReconnect() function to better handle reconnection:
 
 static void checkBackgroundReconnect()
 {
-if (WiFi.status() == WL_CONNECTED) {
-
-
-    Serial.println(
-        "[WEB] Wi-Fi connected in the background - "
-        "shutting down fallback AP"
-    );
-
-    dnsServer.stop();
-
-    WiFi.softAPdisconnect(true);
-
-    WiFi.mode(WIFI_STA);
-
-    WiFi.setHostname(deviceHostname.c_str());
-
-    apMode = false;
-
-    startMDNS();
-
-    return;
+    // If we're in AP mode and WiFi credentials exist, try to connect
+    if (apMode && settings.ssid.length() > 0) {
+        unsigned long now = millis();
+        if (now - lastWifiRetry < WIFI_RETRY_INTERVAL_MS)
+            return;
+        lastWifiRetry = now;
+        
+        Serial.println("[WEB] Attempting background Wi-Fi reconnect...");
+        
+        // Try to connect while keeping AP active
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.setHostname(deviceHostname.c_str());
+        WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);
+        
+        // Wait a bit to see if connection succeeds
+        unsigned long start = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - start < 5000) {
+            delay(500);
+        }
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("[WEB] Wi-Fi connected in the background - shutting down fallback AP");
+            dnsServer.stop();
+            WiFi.softAPdisconnect(true);
+            WiFi.mode(WIFI_STA);
+            WiFi.setHostname(deviceHostname.c_str());
+            apMode = false;
+            startMDNS();
+        }
+    } else if (WiFi.status() == WL_CONNECTED && !apMode) {
+        // We're already connected in STA mode, nothing to do
+        return;
+    }
 }
 
-if (settings.ssid.length() == 0)
-    return;
+// Also ensure the handleWebServer() function properly handles AP mode:
 
-unsigned long now = millis();
-
-if (now - lastWifiRetry < WIFI_RETRY_INTERVAL_MS)
-    return;
-
-lastWifiRetry = now;
-
-WiFi.mode(WIFI_AP_STA);
-
-WiFi.setHostname(deviceHostname.c_str());
-
-WiFi.begin(
-    settings.ssid.c_str(),
-    settings.password.c_str()
-);
-
-WiFi.setTxPower(WIFI_POWER_8_5dBm);
-
-
+void handleWebServer()
+{
+    if (!serverStarted)
+        return;
+    
+    server.handleClient();
+    
+    if (apMode) {
+        dnsServer.processNextRequest();
+        checkBackgroundReconnect();
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -1187,23 +1167,4 @@ if (apMode) {
 }
 
 serverStarted = false;
-
-
-}
-
-void handleWebServer()
-{
-if (!serverStarted)
-return;
-
-server.handleClient();
-
-if (apMode) {
-
-    dnsServer.processNextRequest();
-
-    checkBackgroundReconnect();
-}
-
-
 }
