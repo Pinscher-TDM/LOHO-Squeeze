@@ -76,7 +76,7 @@ a {
 }
 
 a:hover {
-    color: #ff6446;
+    color: #000000;
 }
 
 
@@ -89,15 +89,14 @@ a:hover {
     width: 100%;
 
     padding:
-        28px
-        clamp(24px, 5vw, 72px);
-
+        10px;
     display: flex;
 
     justify-content: space-between;
     align-items: center;
 
-    border-bottom: none;
+
+    background-color: #ff6446;
 
 }
 
@@ -108,7 +107,17 @@ a:hover {
 
 .logo {
 
-    max-width: 70px;
+    max-height: 25px;
+
+    padding-left:
+        clamp(12px,
+            4vw,
+            28px);
+
+    padding-right:
+        clamp(12px,
+           7vw,
+            40px);
 
     display: inline-block;
 
@@ -172,7 +181,6 @@ a:hover {
     
     gap: 48px;
 
-    padding-top: 8px;
 
 }
 
@@ -184,9 +192,9 @@ a:hover {
         "Manrope",
         sans-serif;
 
-    font-size: 10px;
+    font-size: 15px;
 
-    font-weight: 500;
+    font-weight: 700;
 
     letter-spacing: .8px;
 
@@ -212,10 +220,69 @@ a:hover {
 
 }
 
+@keyframes slideUnderline {
+
+    from { width: 0; }
+
+    to { width: 100%; }
+
+}
+
 .nav-link:hover::after,
 .nav-link.active::after {
 
-    width: 100%;
+    animation: slideUnderline 0.25s linear forwards;
+
+}
+
+
+/* =========================================================
+   RESPONSIVE HEADER (mobile)
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+    .site-header {
+
+        padding: 8px;
+
+    }
+
+    .logo {
+
+        max-height: 20px;
+
+        padding-left: clamp(8px, 3vw, 18px);
+
+        padding-right: clamp(8px, 4vw, 24px);
+
+    }
+
+    .brand-mark {
+
+        font-size: 22px;
+
+    }
+
+    .brand-sub {
+
+        font-size: 6px;
+
+    }
+
+    .header-nav {
+
+        gap: 16px;
+
+    }
+
+    .nav-link {
+
+        font-size: 13px;
+
+        letter-spacing: .5px;
+
+    }
 
 }
 
@@ -591,9 +658,28 @@ input[type="range"]::-moz-range-thumb {
 
     border-color: #ff6446;
 
-    color: var(--white);
+    color: #000000;
 
 }
+
+.btn.toggle-btn.inactive {
+
+    background: #ffffff;
+
+    border-color: #ff6446;
+    
+    border-style: solid;
+    border-width: 1px;
+
+    color: #ff6446;
+
+}
+
+.btn.text
+{
+    color: inherit;
+}
+
 
 .btn.toggle-btn.active:focus-visible {
 

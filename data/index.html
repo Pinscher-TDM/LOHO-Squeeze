@@ -6,22 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Studio LOHO Squeeze - lighting control interface">
 
-    <title><svg width="20" height="20" viewBox="0 0 48 48" fill="none"><rect x="16" y="16" width="16" height="16" rx="3.5" stroke="#ff6446" stroke-width="2.5"/><circle cx="24" cy="24" r="7.5" fill="#ff6446"/></svg>SQUEEZE — Studio LOHO</title>
+    <title>SQUEEZE — Studio LOHO</title>
 
-    <link rel="icon" type="image/svg+xml" href="./favicon.jpg">
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" type="text/css" href="./style.css">
 </head>
+
 <body>
+
 <header class="site-header">
     <nav class="header-nav">
         <img src="./loho-logo.svg" alt="LOHO" class="logo">
+
         <a href="/" class="nav-link active">CONTROL</a>
         <a href="/settings" class="nav-link">SETTINGS</a>
-        <a href="/update" class="nav-link">UPDATE</a>
     </nav>
 </header>
+
+
 <main class="page">
+
     <section class="control-section">
+
         <div class="control-card">
 
             <div class="control-top">
@@ -30,15 +36,18 @@
                         Current State
                     </div>
                 </div>
+
                 <div class="power-indicator" id="powerIndicator">
                     OFF
                 </div>
             </div>
 
+
             <div class="brightness-value">
                 <span id="brightnessValue">0</span>
                 <span class="brightness-unit">%</span>
             </div>
+
 
             <input
                 type="range"
@@ -56,38 +65,35 @@
             </div>
 
 
-<button class="btn btn-primary toggle-btn" id="toggleBtn" onclick="
-                fetch('/api/control?toggle=1').then(syncState)
-            ">
-                <span>Toggle light</span>
+            <button
+                class="btn toggle-btn inactive"
+                id="toggleBtn"
+                onclick="fetch('/api/control?toggle=1').then(() => syncState())"
+            >
+                <span class="btn text">Toggle light</span>
+            </button>
+
+        </div>
 
     </section>
-
 
 </main>
 
 
 <footer class="site-footer">
-    <!-- Footer branding with refined typography -->
+
     <div class="footer-top">
         <div class="footer-brand">
             <img src="./loho-logo.svg" alt="LOHO" class="logo">
-            <div class="brand-sub">SQUEEZE</div>
-
-        <div class="footer-links">
-            <a href="/">Control</a>
-            <a href="/settings">Settings</a>
-            <a href="/update">Firmware</a>
         </div>
-
     </div>
 
-    <!-- Copyright line with subtle spacing -->
+
     <div class="footer-bottom">
         <span>Studio LOHO</span>
         <span>© 2026</span>
-
     </div>
+
 </footer>
 
 
@@ -95,9 +101,19 @@
 
 let currentBrightness = 0;
 
+
+/*
+ * Update brightness percentage display
+ */
 function updateBrightnessDisplay(value) {
-    const min = parseInt(document.getElementById('dimmer').min || 0);
-    const max = parseInt(document.getElementById('dimmer').max || 254);
+
+    const min = parseInt(
+        document.getElementById('dimmer').min || 0
+    );
+
+    const max = parseInt(
+        document.getElementById('dimmer').max || 254
+    );
 
     let percentage = 0;
 
@@ -106,17 +122,43 @@ function updateBrightnessDisplay(value) {
             ((value - min) / (max - min)) * 100
         );
     }
-    document.getElementById('brightnessValue').innerText = percentage;
+
+    document.getElementById('brightnessValue').innerText =
+        percentage;
 }
 
 
+/*
+ * Synchronize the UI with the ESP32 state
+ */
 function syncState() {
+
     fetch('/api/state')
-        .then(r => r.json())
+
+        .then(response => {
+
+            if (!response.ok) {
+                throw new Error('Failed to get state');
+            }
+
+            return response.json();
+        })
+
         .then(data => {
 
-            const dimmer = document.getElementById('dimmer');
+            const dimmer =
+                document.getElementById('dimmer');
 
+            const indicator =
+                document.getElementById('powerIndicator');
+
+            const toggleBtn =
+                document.getElementById('toggleBtn');
+
+
+            /*
+             * Update dimmer limits and value
+             */
             dimmer.min = data.minB;
             dimmer.max = data.maxB;
             dimmer.value = data.pwm;
@@ -125,54 +167,96 @@ function syncState() {
 
             updateBrightnessDisplay(data.pwm);
 
-
-            const status = document.getElementById('status');
-            const indicator = document.getElementById('powerIndicator');
-
+            /*
+             * Update light state
+             */
             if (data.ledOn) {
 
-                status.innerText = 'ON';
+                /*
+                 * Light is ON
+                 */
                 indicator.innerText = 'ON';
-                indicator.classList.add('active');
 
-                document.getElementById('toggleBtn').className = 'btn toggle-btn active';
+                indicator.classList.add('active');
+                /*
+                 * Button uses:
+                 * .btn.toggle-btn.active
+                 */
+                toggleBtn.classList.remove('inactive');
+                toggleBtn.classList.add('active');
 
             } else {
 
-                status.innerText = 'OFF';
+                /*
+                 * Light is OFF
+                 */
                 indicator.innerText = 'OFF';
+
                 indicator.classList.remove('active');
+                /*
+                 * Button uses:
+                 * .btn.toggle-btn.inactive
+                 */
+                toggleBtn.classList.remove('active');
+                toggleBtn.classList.add('inactive');
 
             }
 
-
-            document.getElementById('btnstatus').innerText =
-                data.btn ? 'PRESSED' : 'RELEASED';
-
         })
-        .catch(() => {
-            document.getElementById('status').innerText =
-                'CONNECTION ERROR';
+
+        .catch(error => {
+
+            console.error(
+                'Failed to synchronize state:',
+                error
+            );
+
         });
 }
 
 
-document.getElementById('dimmer').addEventListener('input', function () {
+/*
+ * Update brightness display while moving slider
+ */
+document
+    .getElementById('dimmer')
+    .addEventListener('input', function () {
 
-    updateBrightnessDisplay(this.value);
+        updateBrightnessDisplay(this.value);
 
-});
-
-
-document.getElementById('dimmer').addEventListener('change', function () {
-
-    fetch('/api/control?pwm=' + this.value);
-
-});
+    });
 
 
+/*
+ * Send brightness value when slider is released
+ */
+document
+    .getElementById('dimmer')
+    .addEventListener('change', function () {
+
+        fetch('/api/control?pwm=' + this.value)
+            .then(() => syncState())
+            .catch(error => {
+
+                console.error(
+                    'Failed to update brightness:',
+                    error
+                );
+
+            });
+
+    });
+
+
+/*
+ * Initial synchronization
+ */
 syncState();
 
+
+/*
+ * Keep the UI synchronized with the ESP32
+ */
 setInterval(syncState, 1000);
 
 </script>
