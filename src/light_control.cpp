@@ -33,16 +33,6 @@ static bool holdHandled = false;
 static int rapidPressCount = 0;
 static unsigned long rapidPressWindowStart = 0;
 
-// Perceptually-linear dimming: raw PWM level (0-255) -> gamma-corrected duty
-// cycle (0 - (2^PWM_RES)-1). Without this, brightness changes feel bunched
-// up at the low end and barely-there at the high end.
-uint32_t gammaCorrect(uint8_t level) {
-    const uint32_t dutyMax = (1UL << PWM_RES) - 1;
-    float normalized = (float)level / 255.0f;
-    float corrected = pow(normalized, GAMMA);
-    return (uint32_t)(corrected * dutyMax + 0.5f);
-}
-
 void initLightControl() {
     pinMode(BUTTON_PIN, INPUT_PULLDOWN);
     pwmAttach();  // attach LEDC once with frequency + resolution
@@ -56,7 +46,8 @@ void applyPWM(bool notify) {
     uint32_t duty = 0;
     if (ledOn) {
         currentPWM = constrain(currentPWM, settings.minBrightness, settings.maxBrightness);
-        duty = gammaCorrect((uint8_t)currentPWM);
+        // Pure linear mapping: map 0-255 to 0-(2^PWM_RES - 1)
+        duty = map(currentPWM, 0, 255, 0, (1UL << PWM_RES) - 1);
     }
     pwmWrite(duty);
 
